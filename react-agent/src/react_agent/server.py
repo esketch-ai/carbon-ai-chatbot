@@ -385,10 +385,12 @@ async def create_run_stream(thread_id: str, request: Request):
     """Create a streaming run in a thread (LangGraph Cloud API compatible)."""
     try:
         body = await request.json()
+        print(f"[STREAM] Request body: {body}")
 
         # Extract input from body
         input_data = body.get("input", {})
         messages = input_data.get("messages", [])
+        print(f"[STREAM] Messages: {messages}")
 
         # Get configuration
         config = body.get("config", {})
@@ -398,6 +400,8 @@ async def create_run_stream(thread_id: str, request: Request):
             user_message = messages[-1].get("content", "")
         else:
             user_message = ""
+
+        print(f"[STREAM] User message: {user_message}")
 
         # Prepare configuration
         graph_config = {
@@ -413,17 +417,24 @@ async def create_run_stream(thread_id: str, request: Request):
             "messages": [{"role": "user", "content": user_message}]
         }
 
+        print(f"[STREAM] Starting graph stream...")
+
         # Streaming response
         async def generate():
             """Generate streaming response in LangGraph Cloud format."""
             try:
+                chunk_count = 0
                 async for chunk in graph.astream(graph_input, config=graph_config):
+                    chunk_count += 1
+                    print(f"[STREAM] Chunk {chunk_count}: {chunk}")
                     # Format as LangGraph Cloud stream event
                     event = {
                         "event": "values",
                         "data": chunk
                     }
                     yield f"data: {json.dumps(event)}\n\n"
+
+                print(f"[STREAM] Stream completed with {chunk_count} chunks")
 
                 # Send end event
                 end_event = {
@@ -432,6 +443,9 @@ async def create_run_stream(thread_id: str, request: Request):
                 yield f"data: {json.dumps(end_event)}\n\n"
 
             except Exception as e:
+                print(f"[STREAM ERROR] {e}")
+                import traceback
+                traceback.print_exc()
                 error_event = {
                     "event": "error",
                     "data": {"error": str(e)}
@@ -444,6 +458,9 @@ async def create_run_stream(thread_id: str, request: Request):
         )
 
     except Exception as e:
+        print(f"[STREAM OUTER ERROR] {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error creating streaming run: {str(e)}")
 
 
