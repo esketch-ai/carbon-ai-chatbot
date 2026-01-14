@@ -232,6 +232,22 @@ async def search_assistants(request: Request):
     ]
 
 
+@app.get("/assistants/{assistant_id}")
+async def get_assistant(assistant_id: str):
+    """Get assistant by ID (LangGraph Cloud API compatible)."""
+    return {
+        "assistant_id": assistant_id,
+        "graph_id": assistant_id,
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-01T00:00:00Z",
+        "config": {},
+        "metadata": {
+            "name": "CarbonAI Agent",
+            "description": "탄소 배출권 전문 AI 챗봇"
+        }
+    }
+
+
 @app.post("/threads")
 async def create_thread(request: Request):
     """Create a new thread (LangGraph Cloud API compatible)."""
@@ -266,15 +282,6 @@ async def search_threads(request: Request):
     """Search for threads (LangGraph Cloud API compatible)."""
     # Return empty list as we don't persist threads
     return []
-
-
-@app.post("/threads/{thread_id}/history")
-async def get_thread_history(thread_id: str, request: Request):
-    """Get thread history (LangGraph Cloud API compatible)."""
-    # Return empty history as we don't persist conversation history
-    return {
-        "values": []
-    }
 
 
 @app.post("/threads/{thread_id}/runs")
@@ -425,6 +432,16 @@ async def create_run_stream(thread_id: str, request: Request):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating streaming run: {str(e)}")
+
+
+@app.post("/threads/{thread_id}/history")
+@app.get("/threads/{thread_id}/history")
+async def get_thread_history(thread_id: str, request: Request):
+    """Get thread history (LangGraph Cloud API compatible)."""
+    # Return empty history as we don't persist thread history
+    return {
+        "values": []
+    }
 
 
 # Run server

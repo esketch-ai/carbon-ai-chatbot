@@ -162,8 +162,7 @@ async def _get_mcp_client() -> Optional[SSEMCPClient]:
             _netz_mcp_client.running and
             _netz_mcp_client.sse_task and
             not _netz_mcp_client.sse_task.done() and
-            _netz_mcp_client.session_id is not None and
-            _netz_mcp_client.reconnect_attempts < _netz_mcp_client.max_reconnect_attempts
+            _netz_mcp_client.session_id is not None
         )
 
         if is_healthy:
