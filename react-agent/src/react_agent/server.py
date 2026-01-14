@@ -250,6 +250,17 @@ async def get_assistant(assistant_id: str):
     }
 
 
+@app.get("/assistants/{assistant_id}/schemas")
+async def get_assistant_schemas(assistant_id: str):
+    """Get assistant schemas (LangGraph Cloud API compatible)."""
+    # Return empty schemas as we don't use custom input/output schemas
+    return {
+        "input_schema": {},
+        "output_schema": {},
+        "config_schema": {}
+    }
+
+
 @app.post("/threads")
 async def create_thread(request: Request):
     """Create a new thread (LangGraph Cloud API compatible)."""
