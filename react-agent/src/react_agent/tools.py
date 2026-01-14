@@ -383,10 +383,7 @@ logger.info("  → NET-Z MCP 도구는 첫 요청 시 자동으로 로드됩니�
 
 
 async def get_all_tools() -> List[Callable[..., Any]]:
-    """모든 도구 반환 (기본 도구 + MCP 도구)
-
-    첫 호출 시 MCP 서버에서 도구를 로드하고 캐시합니다.
-    """
+    
     global TOOLS
 
     # MCP 도구 로드
