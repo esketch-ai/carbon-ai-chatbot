@@ -350,7 +350,17 @@ async def create_run(thread_id: str, request: Request):
 
         # Prepare user message
         if messages and len(messages) > 0:
-            user_message = messages[-1].get("content", "")
+            content = messages[-1].get("content", "")
+            # content가 리스트 형태인 경우 (LangGraph Cloud 형식)
+            if isinstance(content, list):
+                # [{'type': 'text', 'text': '...'}, ...] 형태에서 텍스트 추출
+                text_parts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        text_parts.append(part.get("text", ""))
+                user_message = " ".join(text_parts)
+            else:
+                user_message = str(content)
         else:
             user_message = ""
 
@@ -435,7 +445,17 @@ async def create_run_stream(thread_id: str, request: Request):
 
         # Prepare user message
         if messages and len(messages) > 0:
-            user_message = messages[-1].get("content", "")
+            content = messages[-1].get("content", "")
+            # content가 리스트 형태인 경우 (LangGraph Cloud 형식)
+            if isinstance(content, list):
+                # [{'type': 'text', 'text': '...'}, ...] 형태에서 텍스트 추출
+                text_parts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        text_parts.append(part.get("text", ""))
+                user_message = " ".join(text_parts)
+            else:
+                user_message = str(content)
         else:
             user_message = ""
 
@@ -464,18 +484,30 @@ async def create_run_stream(thread_id: str, request: Request):
                 chunk_count = 0
                 async for chunk in graph.astream(graph_input, config=graph_config):
                     chunk_count += 1
-                    print(f"[STREAM] Chunk {chunk_count}: {chunk}")
+                    print(f"[STREAM] Chunk {chunk_count} keys: {chunk.keys()}")
+
                     # Serialize chunk to JSON-serializable format
                     serialized_chunk = serialize_chunk(chunk)
-                    print(f"[STREAM] Serialized chunk {chunk_count}: {serialized_chunk}")
+
                     # Format as LangGraph Cloud stream event
                     event = {
                         "event": "values",
                         "data": serialized_chunk
                     }
-                    json_str = json.dumps(event)
-                    print(f"[STREAM] JSON length: {len(json_str)}")
-                    yield f"data: {json_str}\n\n"
+
+                    # Also send messages in a simpler format for frontend parsing
+                    # Extract messages if available
+                    if "call_model" in chunk and "messages" in chunk["call_model"]:
+                        messages_data = chunk["call_model"]["messages"]
+                        print(f"[STREAM] Found {len(messages_data)} messages in call_model")
+                    elif "messages" in chunk:
+                        messages_data = chunk["messages"]
+                        print(f"[STREAM] Found {len(messages_data)} messages in root")
+                    else:
+                        messages_data = None
+                        print(f"[STREAM] No messages found in chunk")
+
+                    yield f"data: {json.dumps(event)}\n\n"
 
                 print(f"[STREAM] Stream completed with {chunk_count} chunks")
 
