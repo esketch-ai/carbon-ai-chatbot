@@ -46,7 +46,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., description="User message")
     thread_id: Optional[str] = Field(None, description="Thread ID for conversation continuity")
     category: Optional[str] = Field(None, description="Category: 탄소배출권, 규제대응, 고객상담")
-    model: Optional[str] = Field("claude-3-5-sonnet-20241022", description="Model name")
+    model: Optional[str] = Field("claude-haiku-4-5", description="Model name")
 
 
 class ChatResponse(BaseModel):
@@ -79,7 +79,7 @@ async def invoke_agent(request: ChatRequest):
         # Prepare configuration
         config = {
             "configurable": {
-                "model": request.model or "claude-3-5-sonnet-20241022",
+                "model": request.model or "claude-haiku-4-5",
                 "category": request.category,
                 "thread_id": request.thread_id or "default"
             }
@@ -125,7 +125,7 @@ async def stream_agent(request: ChatRequest):
         # Prepare configuration
         config = {
             "configurable": {
-                "model": request.model or "claude-3-5-sonnet-20241022",
+                "model": request.model or "claude-haiku-4-5",
                 "category": request.category,
                 "thread_id": request.thread_id or "default"
             }
@@ -321,7 +321,7 @@ async def create_run(thread_id: str, request: Request):
         # Prepare configuration
         graph_config = {
             "configurable": {
-                "model": config.get("configurable", {}).get("model", "claude-3-5-sonnet-20241022"),
+                "model": config.get("configurable", {}).get("model", "claude-haiku-4-5"),
                 "category": config.get("configurable", {}).get("category"),
                 "thread_id": thread_id
             }
@@ -406,7 +406,7 @@ async def create_run_stream(thread_id: str, request: Request):
         # Prepare configuration
         graph_config = {
             "configurable": {
-                "model": config.get("configurable", {}).get("model", "claude-3-5-sonnet-20241022"),
+                "model": config.get("configurable", {}).get("model", "claude-haiku-4-5"),
                 "category": config.get("configurable", {}).get("category"),
                 "thread_id": thread_id
             }
