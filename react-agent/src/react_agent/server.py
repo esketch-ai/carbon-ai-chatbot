@@ -467,12 +467,15 @@ async def create_run_stream(thread_id: str, request: Request):
                     print(f"[STREAM] Chunk {chunk_count}: {chunk}")
                     # Serialize chunk to JSON-serializable format
                     serialized_chunk = serialize_chunk(chunk)
+                    print(f"[STREAM] Serialized chunk {chunk_count}: {serialized_chunk}")
                     # Format as LangGraph Cloud stream event
                     event = {
                         "event": "values",
                         "data": serialized_chunk
                     }
-                    yield f"data: {json.dumps(event)}\n\n"
+                    json_str = json.dumps(event)
+                    print(f"[STREAM] JSON length: {len(json_str)}")
+                    yield f"data: {json_str}\n\n"
 
                 print(f"[STREAM] Stream completed with {chunk_count} chunks")
 
