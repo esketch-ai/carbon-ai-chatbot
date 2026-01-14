@@ -261,6 +261,13 @@ async def get_thread_state(thread_id: str):
     }
 
 
+@app.post("/threads/search")
+async def search_threads(request: Request):
+    """Search for threads (LangGraph Cloud API compatible)."""
+    # Return empty list as we don't persist threads
+    return []
+
+
 @app.post("/threads/{thread_id}/runs")
 async def create_run(thread_id: str, request: Request):
     """Create a run in a thread (LangGraph Cloud API compatible)."""
@@ -342,6 +349,73 @@ async def create_run(thread_id: str, request: Request):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating run: {str(e)}")
+
+
+@app.post("/threads/{thread_id}/runs/stream")
+async def create_run_stream(thread_id: str, request: Request):
+    """Create a streaming run in a thread (LangGraph Cloud API compatible)."""
+    try:
+        body = await request.json()
+
+        # Extract input from body
+        input_data = body.get("input", {})
+        messages = input_data.get("messages", [])
+
+        # Get configuration
+        config = body.get("config", {})
+
+        # Prepare user message
+        if messages and len(messages) > 0:
+            user_message = messages[-1].get("content", "")
+        else:
+            user_message = ""
+
+        # Prepare configuration
+        graph_config = {
+            "configurable": {
+                "model": config.get("configurable", {}).get("model", "claude-3-5-sonnet-20241022"),
+                "category": config.get("configurable", {}).get("category"),
+                "thread_id": thread_id
+            }
+        }
+
+        # Prepare input for graph
+        graph_input = {
+            "messages": [{"role": "user", "content": user_message}]
+        }
+
+        # Streaming response
+        async def generate():
+            """Generate streaming response in LangGraph Cloud format."""
+            try:
+                async for chunk in graph.astream(graph_input, config=graph_config):
+                    # Format as LangGraph Cloud stream event
+                    event = {
+                        "event": "values",
+                        "data": chunk
+                    }
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                # Send end event
+                end_event = {
+                    "event": "end"
+                }
+                yield f"data: {json.dumps(end_event)}\n\n"
+
+            except Exception as e:
+                error_event = {
+                    "event": "error",
+                    "data": {"error": str(e)}
+                }
+                yield f"data: {json.dumps(error_event)}\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream"
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating streaming run: {str(e)}")
 
 
 # Run server
