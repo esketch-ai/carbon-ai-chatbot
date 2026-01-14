@@ -1,0 +1,17 @@
+# Hugging Face Spaces 설정
+title: CarbonAI Chatbot
+emoji: 🌱
+colorFrom: green
+colorTo: blue
+sdk: docker
+pinned: false
+license: mit
+app_port: 7860
+
+# 하드웨어 설정 (무료 티어)
+# cpu-basic: 2 vCPU, 16GB RAM (무료)
+# cpu-upgrade: 8 vCPU, 32GB RAM (유료)
+suggested_hardware: cpu-basic
+
+# 슬립 모드 설정
+app_file: react-agent/src/react_agent/server.py

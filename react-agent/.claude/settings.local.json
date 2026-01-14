@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /s /b)",
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "mcp__netz__get_company_name_by_id",
+      "mcp__netz__get_total_emission",
+      "mcp__netz__get_emission_type_ratio",
+      "mcp__netz__get_scope_emission_comparison",
+      "mcp__netz__get_total_emission_comparison",
+      "mcp__netz__get_top10_facilities_by_scope",
+      "mcp__netz__get_dashboard_emission_comparison",
+      "mcp__netz__get_dashboard_emission_type_ratio",
+      "mcp__netz__get_dashboard_input_status"
+    ]
+  }
+}

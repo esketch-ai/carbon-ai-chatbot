@@ -1,0 +1,10 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent": "./src/react_agent/graph.py:graph"
+  },
+  "env": ".env",
+  "python_version": "3.11",
+  "port": "${PORT:-10000}",
+  "host": "0.0.0.0"
+}
