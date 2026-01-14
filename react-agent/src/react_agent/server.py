@@ -438,10 +438,8 @@ async def create_run_stream(thread_id: str, request: Request):
 @app.get("/threads/{thread_id}/history")
 async def get_thread_history(thread_id: str, request: Request):
     """Get thread history (LangGraph Cloud API compatible)."""
-    # Return empty history as we don't persist thread history
-    return {
-        "values": []
-    }
+    # Return empty array directly (frontend expects array, not object)
+    return []
 
 
 # Run server
