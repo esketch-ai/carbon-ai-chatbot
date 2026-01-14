@@ -17,6 +17,42 @@ from react_agent.configuration import Configuration
 # Load environment variables
 load_dotenv()
 
+
+# Helper function to convert LangChain messages to JSON-serializable format
+def message_to_dict(msg):
+    """Convert a LangChain message to a JSON-serializable dictionary."""
+    if hasattr(msg, 'dict'):
+        return msg.dict()
+    elif hasattr(msg, 'model_dump'):
+        return msg.model_dump()
+    elif hasattr(msg, '__dict__'):
+        # Fallback: convert object attributes to dict
+        result = {}
+        for key, value in msg.__dict__.items():
+            if isinstance(value, (str, int, float, bool, type(None))):
+                result[key] = value
+            elif isinstance(value, dict):
+                result[key] = value
+            elif isinstance(value, list):
+                result[key] = [message_to_dict(item) if hasattr(item, '__dict__') else item for item in value]
+            else:
+                result[key] = str(value)
+        return result
+    else:
+        return str(msg)
+
+
+def serialize_chunk(chunk):
+    """Recursively serialize a chunk to JSON-serializable format."""
+    if isinstance(chunk, dict):
+        return {key: serialize_chunk(value) for key, value in chunk.items()}
+    elif isinstance(chunk, list):
+        return [serialize_chunk(item) for item in chunk]
+    elif hasattr(chunk, 'dict') or hasattr(chunk, 'model_dump') or hasattr(chunk, '__dict__'):
+        return message_to_dict(chunk)
+    else:
+        return chunk
+
 # Initialize FastAPI app
 app = FastAPI(
     title="CarbonAI Agent API",
@@ -338,10 +374,12 @@ async def create_run(thread_id: str, request: Request):
                 """Generate streaming response in LangGraph Cloud format."""
                 try:
                     async for chunk in graph.astream(graph_input, config=graph_config):
+                        # Serialize chunk to JSON-serializable format
+                        serialized_chunk = serialize_chunk(chunk)
                         # Format as LangGraph Cloud stream event
                         event = {
                             "event": "values",
-                            "data": chunk
+                            "data": serialized_chunk
                         }
                         yield f"data: {json.dumps(event)}\n\n"
 
@@ -427,10 +465,12 @@ async def create_run_stream(thread_id: str, request: Request):
                 async for chunk in graph.astream(graph_input, config=graph_config):
                     chunk_count += 1
                     print(f"[STREAM] Chunk {chunk_count}: {chunk}")
+                    # Serialize chunk to JSON-serializable format
+                    serialized_chunk = serialize_chunk(chunk)
                     # Format as LangGraph Cloud stream event
                     event = {
                         "event": "values",
-                        "data": chunk
+                        "data": serialized_chunk
                     }
                     yield f"data: {json.dumps(event)}\n\n"
 
