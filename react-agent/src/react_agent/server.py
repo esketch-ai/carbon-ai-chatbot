@@ -216,10 +216,11 @@ async def get_info():
 @app.post("/assistants/search")
 async def search_assistants(request: Request):
     """Search for assistants (LangGraph Cloud API compatible)."""
-    # Return the default agent
+    # Use a fixed UUID for the assistant
+    assistant_uuid = "fe096781-5601-53d2-b2f6-0d3403f7e9ca"
     return [
         {
-            "assistant_id": "agent",
+            "assistant_id": assistant_uuid,
             "graph_id": "agent",
             "created_at": "2024-01-01T00:00:00Z",
             "updated_at": "2024-01-01T00:00:00Z",
@@ -235,9 +236,10 @@ async def search_assistants(request: Request):
 @app.get("/assistants/{assistant_id}")
 async def get_assistant(assistant_id: str):
     """Get assistant by ID (LangGraph Cloud API compatible)."""
+    # Always return the same assistant regardless of ID
     return {
         "assistant_id": assistant_id,
-        "graph_id": assistant_id,
+        "graph_id": "agent",
         "created_at": "2024-01-01T00:00:00Z",
         "updated_at": "2024-01-01T00:00:00Z",
         "config": {},
