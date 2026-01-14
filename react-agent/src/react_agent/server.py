@@ -268,6 +268,15 @@ async def search_threads(request: Request):
     return []
 
 
+@app.post("/threads/{thread_id}/history")
+async def get_thread_history(thread_id: str, request: Request):
+    """Get thread history (LangGraph Cloud API compatible)."""
+    # Return empty history as we don't persist conversation history
+    return {
+        "values": []
+    }
+
+
 @app.post("/threads/{thread_id}/runs")
 async def create_run(thread_id: str, request: Request):
     """Create a run in a thread (LangGraph Cloud API compatible)."""
