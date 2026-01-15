@@ -23,9 +23,9 @@ load_dotenv()
 def message_to_dict(msg):
     """Convert a LangChain message to a JSON-serializable dictionary."""
     if hasattr(msg, 'dict'):
-        return msg.dict()
+        result = msg.dict()
     elif hasattr(msg, 'model_dump'):
-        return msg.model_dump()
+        result = msg.model_dump()
     elif hasattr(msg, '__dict__'):
         # Fallback: convert object attributes to dict
         result = {}
@@ -38,9 +38,27 @@ def message_to_dict(msg):
                 result[key] = [message_to_dict(item) if hasattr(item, '__dict__') else item for item in value]
             else:
                 result[key] = str(value)
-        return result
     else:
         return str(msg)
+
+    # CRITICAL: If content is a list (multimodal format), extract text parts
+    if isinstance(result, dict) and 'content' in result:
+        content = result['content']
+        if isinstance(content, list):
+            # Extract text from list of content blocks
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    if item.get('type') == 'text':
+                        text_parts.append(item.get('text', ''))
+                    elif 'text' in item:
+                        text_parts.append(item['text'])
+                elif isinstance(item, str):
+                    text_parts.append(item)
+            # Convert to single string
+            result['content'] = '\n'.join(text_parts) if text_parts else ''
+
+    return result
 
 
 def serialize_chunk(chunk):
@@ -343,6 +361,7 @@ async def create_run(thread_id: str, request: Request):
         # Extract input from body
         input_data = body.get("input", {})
         messages = input_data.get("messages", [])
+        context = input_data.get("context", {})
 
         # Get configuration
         assistant_id = body.get("assistant_id", "agent")
@@ -366,10 +385,13 @@ async def create_run(thread_id: str, request: Request):
             user_message = ""
 
         # Prepare configuration
+        # Category can come from either context or config
+        category = context.get("category") or config.get("configurable", {}).get("category")
+
         graph_config = {
             "configurable": {
                 "model": config.get("configurable", {}).get("model", "claude-haiku-4-5"),
-                "category": config.get("configurable", {}).get("category"),
+                "category": category,
                 "thread_id": thread_id
             }
         }
@@ -439,7 +461,9 @@ async def create_run_stream(thread_id: str, request: Request):
         # Extract input from body
         input_data = body.get("input", {})
         messages = input_data.get("messages", [])
+        context = input_data.get("context", {})
         print(f"[STREAM] Messages: {messages}")
+        print(f"[STREAM] Context: {context}")
 
         # Get configuration
         config = body.get("config", {})
@@ -463,13 +487,17 @@ async def create_run_stream(thread_id: str, request: Request):
         print(f"[STREAM] User message: {user_message}")
 
         # Prepare configuration
+        # Category can come from either context or config
+        category = context.get("category") or config.get("configurable", {}).get("category")
+
         graph_config = {
             "configurable": {
                 "model": config.get("configurable", {}).get("model", "claude-haiku-4-5"),
-                "category": config.get("configurable", {}).get("category"),
+                "category": category,
                 "thread_id": thread_id
             }
         }
+        print(f"[STREAM] Graph config: {graph_config}")
 
         # Prepare input for graph
         graph_input = {
@@ -492,17 +520,26 @@ async def create_run_stream(thread_id: str, request: Request):
                     # Serialize chunk to JSON-serializable format
                     serialized_chunk = serialize_chunk(chunk)
 
+                    # Debug: print serialized messages
+                    if "messages" in chunk:
+                        print(f"[STREAM] Messages in chunk: {len(chunk['messages'])}")
+                        # Print last message content for debugging
+                        if chunk['messages']:
+                            last_msg = chunk['messages'][-1]
+                            if hasattr(last_msg, 'content'):
+                                content_preview = str(last_msg.content)[:200]
+                                print(f"[STREAM] Last message content preview: {content_preview}")
+                                print(f"[STREAM] Content type: {type(last_msg.content)}")
+
                     # Send as values event (SDK understands this)
                     stream_event = {
                         "event": "values",
                         "data": serialized_chunk
                     }
 
-                    yield f"data: {json.dumps(stream_event)}\n\n"
-
-                    # Debug: print message count
-                    if "messages" in chunk:
-                        print(f"[STREAM] Messages in chunk: {len(chunk['messages'])}")
+                    event_json = json.dumps(stream_event, ensure_ascii=False)
+                    print(f"[STREAM] Sending event: {event_json[:500]}")
+                    yield f"data: {event_json}\n\n"
 
                 print(f"[STREAM] Stream completed with {chunk_count} chunks")
 
