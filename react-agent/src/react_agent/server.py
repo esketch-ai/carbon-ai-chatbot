@@ -155,8 +155,9 @@ async def invoke_agent(request: ChatRequest):
         }
 
         # Prepare input
+        # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         input_data = {
-            "messages": [{"role": "user", "content": request.message}]
+            "messages": [HumanMessage(content=request.message)]
         }
 
         # Invoke the graph
@@ -201,8 +202,9 @@ async def stream_agent(request: ChatRequest):
         }
 
         # Prepare input
+        # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         input_data = {
-            "messages": [{"role": "user", "content": request.message}]
+            "messages": [HumanMessage(content=request.message)]
         }
 
         async def generate():
@@ -411,8 +413,9 @@ async def create_run(thread_id: str, request: Request):
         }
 
         # Prepare input for graph
+        # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         graph_input = {
-            "messages": [{"role": "user", "content": user_message}]
+            "messages": [HumanMessage(content=user_message)]
         }
 
         if stream:
@@ -514,8 +517,9 @@ async def create_run_stream(thread_id: str, request: Request):
         print(f"[STREAM] Graph config: {graph_config}")
 
         # Prepare input for graph
+        # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         graph_input = {
-            "messages": [{"role": "user", "content": user_message}]
+            "messages": [HumanMessage(content=user_message)]
         }
 
         print(f"[STREAM] Starting graph stream with astream_events...")
