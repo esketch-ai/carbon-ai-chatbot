@@ -143,7 +143,16 @@ async def call_model(
 
     # MCP 도구를 포함한 전체 도구 목록 가져오기
     all_tools = await get_all_tools()
-    print(f"[CALL_MODEL] Loaded {len(all_tools)} tools: {[tool.name for tool in all_tools]}")
+    # Safely get tool names (handle both Tool objects and functions)
+    tool_names = []
+    for tool in all_tools:
+        if hasattr(tool, 'name'):
+            tool_names.append(tool.name)
+        elif hasattr(tool, '__name__'):
+            tool_names.append(tool.__name__)
+        else:
+            tool_names.append(str(type(tool).__name__))
+    print(f"[CALL_MODEL] Loaded {len(all_tools)} tools: {tool_names}")
 
     # Initialize the model with tool binding. Change the model or add more tools here.
     # ChatAnthropic 객체 생성
