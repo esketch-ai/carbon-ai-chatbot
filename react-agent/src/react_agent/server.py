@@ -65,7 +65,14 @@ def message_to_dict(msg):
 
     # Replace content with extracted text if we found any
     if extracted_content is not None and isinstance(result, dict):
-        result['content'] = extracted_content
+        # CRITICAL: Convert string content to LangGraph SDK format (array of content blocks)
+        # Frontend SDK expects: content: [{ type: "text", text: "..." }]
+        result['content'] = [
+            {
+                "type": "text",
+                "text": extracted_content
+            }
+        ]
         print(f"[SERIALIZE] Extracted content: {extracted_content[:200]}...")
     elif isinstance(result, dict) and result.get('content') == 'complex':
         # Fallback: if content is still "complex", log warning
