@@ -22,6 +22,28 @@ load_dotenv()
 # Helper function to convert LangChain messages to JSON-serializable format
 def message_to_dict(msg):
     """Convert a LangChain message to a JSON-serializable dictionary."""
+
+    # CRITICAL: Extract content BEFORE serialization to avoid "complex" conversion
+    # LangChain's dict()/model_dump() converts list content to "complex" string
+    extracted_content = None
+    if hasattr(msg, 'content'):
+        raw_content = msg.content
+        if isinstance(raw_content, list):
+            # Extract text from list of content blocks (multimodal format)
+            text_parts = []
+            for item in raw_content:
+                if isinstance(item, dict):
+                    if item.get('type') == 'text':
+                        text_parts.append(item.get('text', ''))
+                    elif 'text' in item:
+                        text_parts.append(item['text'])
+                elif isinstance(item, str):
+                    text_parts.append(item)
+            extracted_content = '\n'.join(text_parts) if text_parts else ''
+        elif isinstance(raw_content, str):
+            extracted_content = raw_content
+
+    # Now serialize the message
     if hasattr(msg, 'dict'):
         result = msg.dict()
     elif hasattr(msg, 'model_dump'):
@@ -41,22 +63,14 @@ def message_to_dict(msg):
     else:
         return str(msg)
 
-    # CRITICAL: If content is a list (multimodal format), extract text parts
-    if isinstance(result, dict) and 'content' in result:
-        content = result['content']
-        if isinstance(content, list):
-            # Extract text from list of content blocks
-            text_parts = []
-            for item in content:
-                if isinstance(item, dict):
-                    if item.get('type') == 'text':
-                        text_parts.append(item.get('text', ''))
-                    elif 'text' in item:
-                        text_parts.append(item['text'])
-                elif isinstance(item, str):
-                    text_parts.append(item)
-            # Convert to single string
-            result['content'] = '\n'.join(text_parts) if text_parts else ''
+    # Replace content with extracted text if we found any
+    if extracted_content is not None and isinstance(result, dict):
+        result['content'] = extracted_content
+        print(f"[SERIALIZE] Extracted content: {extracted_content[:200]}...")
+    elif isinstance(result, dict) and result.get('content') == 'complex':
+        # Fallback: if content is still "complex", log warning
+        print(f"[SERIALIZE WARNING] Content is 'complex' - extraction may have failed")
+        print(f"[SERIALIZE WARNING] Message type: {type(msg)}, has content: {hasattr(msg, 'content')}")
 
     return result
 
@@ -509,27 +523,44 @@ async def create_run_stream(thread_id: str, request: Request):
         # Streaming response using standard astream
         async def generate():
             """Generate streaming response."""
+            import asyncio
             try:
                 chunk_count = 0
 
                 # Use standard astream (works with SDK)
                 async for chunk in graph.astream(graph_input, config=graph_config, stream_mode="values"):
                     chunk_count += 1
-                    print(f"[STREAM] Chunk {chunk_count}: {list(chunk.keys())}")
+                    print(f"\n[STREAM] ===== Chunk {chunk_count} =====")
+                    print(f"[STREAM] Chunk keys: {list(chunk.keys())}")
+
+                    # Debug: print RAW messages BEFORE serialization
+                    if "messages" in chunk:
+                        print(f"[STREAM] Messages in chunk: {len(chunk['messages'])}")
+                        for idx, msg in enumerate(chunk['messages']):
+                            msg_type = type(msg).__name__
+                            print(f"[STREAM]   Message {idx}: type={msg_type}")
+                            if hasattr(msg, 'content'):
+                                raw_content = msg.content
+                                content_type = type(raw_content).__name__
+                                if isinstance(raw_content, str):
+                                    preview = raw_content[:200]
+                                elif isinstance(raw_content, list):
+                                    preview = f"LIST with {len(raw_content)} items"
+                                else:
+                                    preview = str(raw_content)[:200]
+                                print(f"[STREAM]     Raw content type: {content_type}")
+                                print(f"[STREAM]     Raw content preview: {preview}")
 
                     # Serialize chunk to JSON-serializable format
                     serialized_chunk = serialize_chunk(chunk)
 
-                    # Debug: print serialized messages
-                    if "messages" in chunk:
-                        print(f"[STREAM] Messages in chunk: {len(chunk['messages'])}")
-                        # Print last message content for debugging
-                        if chunk['messages']:
-                            last_msg = chunk['messages'][-1]
-                            if hasattr(last_msg, 'content'):
-                                content_preview = str(last_msg.content)[:200]
-                                print(f"[STREAM] Last message content preview: {content_preview}")
-                                print(f"[STREAM] Content type: {type(last_msg.content)}")
+                    # Debug: print SERIALIZED messages
+                    if "messages" in serialized_chunk:
+                        print(f"[STREAM] Serialized messages: {len(serialized_chunk['messages'])}")
+                        for idx, msg in enumerate(serialized_chunk['messages']):
+                            content = msg.get('content', 'NO_CONTENT')
+                            content_preview = str(content)[:200] if content else 'EMPTY'
+                            print(f"[STREAM]   Serialized msg {idx}: content={content_preview}")
 
                     # Send as values event (SDK understands this)
                     stream_event = {
@@ -538,7 +569,7 @@ async def create_run_stream(thread_id: str, request: Request):
                     }
 
                     event_json = json.dumps(stream_event, ensure_ascii=False)
-                    print(f"[STREAM] Sending event: {event_json[:500]}")
+                    print(f"[STREAM] Event JSON preview: {event_json[:300]}...")
                     yield f"data: {event_json}\n\n"
 
                 print(f"[STREAM] Stream completed with {chunk_count} chunks")
@@ -549,6 +580,10 @@ async def create_run_stream(thread_id: str, request: Request):
                 }
                 yield f"data: {json.dumps(end_event)}\n\n"
 
+            except asyncio.CancelledError:
+                print(f"[STREAM] Client disconnected (CancelledError) after {chunk_count} chunks")
+                # Don't yield error event - client already disconnected
+                raise  # Re-raise to properly cleanup
             except Exception as e:
                 print(f"[STREAM ERROR] {e}")
                 import traceback
@@ -565,6 +600,7 @@ async def create_run_stream(thread_id: str, request: Request):
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable Nginx buffering for streaming
             }
         )
 
@@ -591,5 +627,7 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port,
         reload=False,
-        log_level="info"
+        log_level="info",
+        timeout_keep_alive=75,  # Keep connection alive for 75 seconds
+        timeout_graceful_shutdown=30,  # Wait 30s for graceful shutdown
     )
