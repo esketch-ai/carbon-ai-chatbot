@@ -500,12 +500,31 @@ async def create_run_stream(thread_id: str, request: Request):
                         chunk_content = chunk_data.get("chunk", {})
 
                         # Extract content from AIMessageChunk
+                        token = ""
                         if hasattr(chunk_content, "content"):
-                            token = chunk_content.content
+                            content = chunk_content.content
+                            # Content can be string or list
+                            if isinstance(content, str):
+                                token = content
+                            elif isinstance(content, list):
+                                # Extract text from list format
+                                for item in content:
+                                    if isinstance(item, str):
+                                        token += item
+                                    elif isinstance(item, dict) and item.get("type") == "text":
+                                        token += item.get("text", "")
                         elif isinstance(chunk_content, dict):
-                            token = chunk_content.get("content", "")
+                            content = chunk_content.get("content", "")
+                            if isinstance(content, str):
+                                token = content
+                            elif isinstance(content, list):
+                                for item in content:
+                                    if isinstance(item, str):
+                                        token += item
+                                    elif isinstance(item, dict) and item.get("type") == "text":
+                                        token += item.get("text", "")
                         else:
-                            token = str(chunk_content)
+                            token = str(chunk_content) if chunk_content else ""
 
                         if token:
                             accumulated_content += token
