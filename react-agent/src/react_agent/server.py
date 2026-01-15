@@ -634,7 +634,7 @@ async def get_thread_history(thread_id: str, request: Request):
         state = graph.get_state(config)
 
         if not state or not state.values:
-            return {"values": []}
+            return []
 
         # Extract messages from state
         messages = state.values.get("messages", [])
@@ -642,14 +642,24 @@ async def get_thread_history(thread_id: str, request: Request):
         # Convert messages to serializable format
         serialized_messages = [message_to_dict(msg) for msg in messages]
 
-        # Return in LangGraph SDK format
-        return {"values": [{"messages": serialized_messages}]}
+        # Return as array of StateSnapshot objects (LangGraph SDK format)
+        # SDK expects: [{ values: {...}, next: [...], config: {...}, ... }, ...]
+        return [
+            {
+                "values": {"messages": serialized_messages},
+                "next": [],
+                "config": config,
+                "metadata": {},
+                "created_at": None,
+                "parent_config": None,
+            }
+        ]
 
     except Exception as e:
         print(f"[HISTORY ERROR] {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
-        return {"values": []}
+        return []
 
 
 # Run server
