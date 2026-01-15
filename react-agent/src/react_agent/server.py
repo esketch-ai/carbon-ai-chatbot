@@ -478,110 +478,33 @@ async def create_run_stream(thread_id: str, request: Request):
 
         print(f"[STREAM] Starting graph stream with astream_events...")
 
-        # Streaming response using astream_events for token-level streaming
+        # Streaming response using standard astream
         async def generate():
-            """Generate streaming response with token-level granularity."""
+            """Generate streaming response."""
             try:
                 chunk_count = 0
-                accumulated_content = ""
 
-                # Initialize with user message
-                user_msg = HumanMessage(content=user_message, id=str(uuid.uuid4()))
-                current_messages = [user_msg]
+                # Use standard astream (works with SDK)
+                async for chunk in graph.astream(graph_input, config=graph_config, stream_mode="values"):
+                    chunk_count += 1
+                    print(f"[STREAM] Chunk {chunk_count}: {list(chunk.keys())}")
 
-                # Use astream_events for fine-grained streaming
-                async for event in graph.astream_events(graph_input, config=graph_config, version="v2"):
-                    event_type = event.get("event")
+                    # Serialize chunk to JSON-serializable format
+                    serialized_chunk = serialize_chunk(chunk)
 
-                    # Track LLM token streaming
-                    if event_type == "on_chat_model_stream":
-                        chunk_count += 1
-                        chunk_data = event.get("data", {})
-                        chunk_content = chunk_data.get("chunk", {})
+                    # Send as values event (SDK understands this)
+                    stream_event = {
+                        "event": "values",
+                        "data": serialized_chunk
+                    }
 
-                        # Extract content from AIMessageChunk
-                        token = ""
-                        if hasattr(chunk_content, "content"):
-                            content = chunk_content.content
-                            # Content can be string or list
-                            if isinstance(content, str):
-                                token = content
-                            elif isinstance(content, list):
-                                # Extract text from list format
-                                for item in content:
-                                    if isinstance(item, str):
-                                        token += item
-                                    elif isinstance(item, dict) and item.get("type") == "text":
-                                        token += item.get("text", "")
-                        elif isinstance(chunk_content, dict):
-                            content = chunk_content.get("content", "")
-                            if isinstance(content, str):
-                                token = content
-                            elif isinstance(content, list):
-                                for item in content:
-                                    if isinstance(item, str):
-                                        token += item
-                                    elif isinstance(item, dict) and item.get("type") == "text":
-                                        token += item.get("text", "")
-                        else:
-                            token = str(chunk_content) if chunk_content else ""
+                    yield f"data: {json.dumps(stream_event)}\n\n"
 
-                        if token:
-                            accumulated_content += token
+                    # Debug: print message count
+                    if "messages" in chunk:
+                        print(f"[STREAM] Messages in chunk: {len(chunk['messages'])}")
 
-                            # Create intermediate message with accumulated content
-                            # LangGraph SDK expects messages at the root level
-                            intermediate_msg = AIMessage(
-                                content=accumulated_content,
-                                id=event.get("run_id", "temp")
-                            )
-
-                            # Include both user message and streaming AI response
-                            all_messages = current_messages + [intermediate_msg]
-
-                            # Send as values event with messages at root
-                            stream_event = {
-                                "event": "values",
-                                "data": {
-                                    "messages": [message_to_dict(msg) for msg in all_messages]
-                                }
-                            }
-
-                            yield f"data: {json.dumps(stream_event)}\n\n"
-
-                            if chunk_count % 10 == 0:
-                                print(f"[STREAM] Tokens streamed: {chunk_count}, Length: {len(accumulated_content)}")
-
-                    # Track node completion (call_model, tools, etc.)
-                    elif event_type == "on_chain_end":
-                        name = event.get("name", "")
-                        if name == "call_model":
-                            # Final message from call_model node
-                            output = event.get("data", {}).get("output", {})
-                            if "messages" in output:
-                                current_messages = output["messages"]
-
-                                # Serialize and send with messages at root level
-                                serialized_messages = [message_to_dict(msg) for msg in current_messages]
-                                stream_event = {
-                                    "event": "values",
-                                    "data": {
-                                        "messages": serialized_messages
-                                    }
-                                }
-                                yield f"data: {json.dumps(stream_event)}\n\n"
-                                print(f"[STREAM] Node 'call_model' completed with {len(current_messages)} messages")
-
-                    # Track tool calls
-                    elif event_type == "on_tool_start":
-                        tool_name = event.get("name", "unknown")
-                        print(f"[STREAM] Tool '{tool_name}' started")
-
-                    elif event_type == "on_tool_end":
-                        tool_name = event.get("name", "unknown")
-                        print(f"[STREAM] Tool '{tool_name}' completed")
-
-                print(f"[STREAM] Stream completed - Total tokens: {chunk_count}, Final length: {len(accumulated_content)}")
+                print(f"[STREAM] Stream completed with {chunk_count} chunks")
 
                 # Send end event
                 end_event = {
