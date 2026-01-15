@@ -16,6 +16,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.memory import MemorySaver
 
 from react_agent.configuration import Configuration
 from react_agent.state import InputState, State
@@ -342,5 +343,7 @@ builder.add_conditional_edges(
 # This creates a cycle: after using tools, we always return to the model
 builder.add_edge("tools", "call_model")
 
-# Compile the builder into an executable graph
-graph = builder.compile(name="ReAct Agent")
+# Compile the builder into an executable graph with checkpointer
+# MemorySaver allows the graph to store and retrieve conversation history
+checkpointer = MemorySaver()
+graph = builder.compile(name="ReAct Agent", checkpointer=checkpointer)

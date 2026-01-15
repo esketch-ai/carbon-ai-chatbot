@@ -626,8 +626,30 @@ async def create_run_stream(thread_id: str, request: Request):
 @app.get("/threads/{thread_id}/history")
 async def get_thread_history(thread_id: str, request: Request):
     """Get thread history (LangGraph Cloud API compatible)."""
-    # Return empty array directly (frontend expects array, not object)
-    return []
+    try:
+        # Get the latest state from the checkpointer
+        config = {"configurable": {"thread_id": thread_id}}
+
+        # Get state from graph
+        state = graph.get_state(config)
+
+        if not state or not state.values:
+            return {"values": []}
+
+        # Extract messages from state
+        messages = state.values.get("messages", [])
+
+        # Convert messages to serializable format
+        serialized_messages = [message_to_dict(msg) for msg in messages]
+
+        # Return in LangGraph SDK format
+        return {"values": [{"messages": serialized_messages}]}
+
+    except Exception as e:
+        print(f"[HISTORY ERROR] {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"values": []}
 
 
 # Run server
