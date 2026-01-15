@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from react_agent.graph import graph
 from react_agent.configuration import Configuration
+from langchain_core.messages import AIMessage, HumanMessage
 
 # Load environment variables
 load_dotenv()
@@ -475,41 +476,93 @@ async def create_run_stream(thread_id: str, request: Request):
             "messages": [{"role": "user", "content": user_message}]
         }
 
-        print(f"[STREAM] Starting graph stream...")
+        print(f"[STREAM] Starting graph stream with astream_events...")
 
-        # Streaming response
+        # Streaming response using astream_events for token-level streaming
         async def generate():
-            """Generate streaming response in LangGraph Cloud format."""
+            """Generate streaming response with token-level granularity."""
             try:
                 chunk_count = 0
-                async for chunk in graph.astream(graph_input, config=graph_config):
-                    chunk_count += 1
-                    print(f"[STREAM] Chunk {chunk_count} keys: {chunk.keys()}")
+                accumulated_content = ""
 
-                    # Serialize chunk to JSON-serializable format
-                    serialized_chunk = serialize_chunk(chunk)
+                # Initialize with user message
+                user_msg = HumanMessage(content=user_message, id=str(uuid.uuid4()))
+                current_messages = [user_msg]
 
-                    # Format as LangGraph Cloud stream event
-                    event = {
-                        "event": "values",
-                        "data": serialized_chunk
-                    }
+                # Use astream_events for fine-grained streaming
+                async for event in graph.astream_events(graph_input, config=graph_config, version="v2"):
+                    event_type = event.get("event")
 
-                    # Also send messages in a simpler format for frontend parsing
-                    # Extract messages if available
-                    if "call_model" in chunk and "messages" in chunk["call_model"]:
-                        messages_data = chunk["call_model"]["messages"]
-                        print(f"[STREAM] Found {len(messages_data)} messages in call_model")
-                    elif "messages" in chunk:
-                        messages_data = chunk["messages"]
-                        print(f"[STREAM] Found {len(messages_data)} messages in root")
-                    else:
-                        messages_data = None
-                        print(f"[STREAM] No messages found in chunk")
+                    # Track LLM token streaming
+                    if event_type == "on_chat_model_stream":
+                        chunk_count += 1
+                        chunk_data = event.get("data", {})
+                        chunk_content = chunk_data.get("chunk", {})
 
-                    yield f"data: {json.dumps(event)}\n\n"
+                        # Extract content from AIMessageChunk
+                        if hasattr(chunk_content, "content"):
+                            token = chunk_content.content
+                        elif isinstance(chunk_content, dict):
+                            token = chunk_content.get("content", "")
+                        else:
+                            token = str(chunk_content)
 
-                print(f"[STREAM] Stream completed with {chunk_count} chunks")
+                        if token:
+                            accumulated_content += token
+
+                            # Create intermediate message with accumulated content
+                            # LangGraph SDK expects messages at the root level
+                            intermediate_msg = AIMessage(
+                                content=accumulated_content,
+                                id=event.get("run_id", "temp")
+                            )
+
+                            # Include both user message and streaming AI response
+                            all_messages = current_messages + [intermediate_msg]
+
+                            # Send as values event with messages at root
+                            stream_event = {
+                                "event": "values",
+                                "data": {
+                                    "messages": [message_to_dict(msg) for msg in all_messages]
+                                }
+                            }
+
+                            yield f"data: {json.dumps(stream_event)}\n\n"
+
+                            if chunk_count % 10 == 0:
+                                print(f"[STREAM] Tokens streamed: {chunk_count}, Length: {len(accumulated_content)}")
+
+                    # Track node completion (call_model, tools, etc.)
+                    elif event_type == "on_chain_end":
+                        name = event.get("name", "")
+                        if name == "call_model":
+                            # Final message from call_model node
+                            output = event.get("data", {}).get("output", {})
+                            if "messages" in output:
+                                current_messages = output["messages"]
+
+                                # Serialize and send with messages at root level
+                                serialized_messages = [message_to_dict(msg) for msg in current_messages]
+                                stream_event = {
+                                    "event": "values",
+                                    "data": {
+                                        "messages": serialized_messages
+                                    }
+                                }
+                                yield f"data: {json.dumps(stream_event)}\n\n"
+                                print(f"[STREAM] Node 'call_model' completed with {len(current_messages)} messages")
+
+                    # Track tool calls
+                    elif event_type == "on_tool_start":
+                        tool_name = event.get("name", "unknown")
+                        print(f"[STREAM] Tool '{tool_name}' started")
+
+                    elif event_type == "on_tool_end":
+                        tool_name = event.get("name", "unknown")
+                        print(f"[STREAM] Tool '{tool_name}' completed")
+
+                print(f"[STREAM] Stream completed - Total tokens: {chunk_count}, Final length: {len(accumulated_content)}")
 
                 # Send end event
                 end_event = {
@@ -529,7 +582,11 @@ async def create_run_stream(thread_id: str, request: Request):
 
         return StreamingResponse(
             generate(),
-            media_type="text/event-stream"
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
         )
 
     except Exception as e:
