@@ -169,7 +169,7 @@ class RAGTool:
 
         return ""  # 헤더 없음
 
-    def _extract_keywords(self, text: str, max_keywords: int = 5) -> List[str]:
+    def _extract_keywords_from_text(self, text: str, max_keywords: int = 5) -> List[str]:
         """텍스트에서 핵심 키워드 추출 (간단한 휴리스틱 기반)"""
         # 불용어 제거 및 명사 위주 추출
         stopwords = {'은', '는', '이', '가', '을', '를', '의', '에', '로', '와', '과', '도', '만',
@@ -283,7 +283,7 @@ class RAGTool:
                                 break
 
                         # 키워드 추출 (청크 내용에서)
-                        keywords = self._extract_keywords(chunk, max_keywords=5)
+                        keywords = self._extract_keywords_from_text(chunk, max_keywords=5)
 
                         doc = Document(
                             page_content=chunk,
@@ -446,7 +446,7 @@ class RAGTool:
             self._build_bm25_index()
         return self._bm25_index
 
-    def _extract_keywords(self, query: str) -> str:
+    def _extract_keywords_from_query(self, query: str) -> str:
         """LLM을 사용하여 쿼리에서 핵심 키워드만 추출"""
         try:
             from langchain_anthropic import ChatAnthropic
