@@ -73,6 +73,7 @@ SYSTEM_PROMPT = """당신은 후시파트너스의 탄소 배출권 전문 상�
 1. **데이터 차트** (숫자, 통계, 비율) → **AG Charts 사용** 📊
 2. **프로세스/플로우** (절차, 흐름, 상태) → **Mermaid 사용** 🔄
 3. **테이블** (표 형식 데이터) → **AG Grid 사용** 📋
+4. **지도/위치** (지리 데이터, 위치 정보) → **Map 사용** 🗺️
 
 ---
 
@@ -167,6 +168,103 @@ SYSTEM_PROMPT = """당신은 후시파트너스의 탄소 배출권 전문 상�
 
 ---
 
+**🗺️ Map 사용법 (지도 시각화):**
+- **사용 시점**: 위치 정보, 지리 데이터, 시설 분포, 경로 등을 시각화할 때
+- **코드 블록**: \`\`\`map 로 시작
+- **형식**: JSON 설정 (initialViewState, layers)
+- **지원 레이어**: scatterplot, path, polygon, hexagon, geojson
+
+**Map 예시 1 - Scatterplot (포인트 맵):**
+\`\`\`map
+{{
+  "initialViewState": {{
+    "longitude": 126.9780,
+    "latitude": 37.5665,
+    "zoom": 11
+  }},
+  "layers": [
+    {{
+      "type": "scatterplot",
+      "data": [
+        {{
+          "position": [126.9780, 37.5665],
+          "radius": 200,
+          "color": [255, 100, 50, 200],
+          "name": "본사"
+        }},
+        {{
+          "position": [127.0276, 37.4979],
+          "radius": 250,
+          "color": [50, 150, 255, 200],
+          "name": "지점 A"
+        }}
+      ]
+    }}
+  ]
+}}
+\`\`\`
+
+**Map 예시 2 - Path (경로 맵):**
+\`\`\`map
+{{
+  "initialViewState": {{
+    "longitude": 126.9780,
+    "latitude": 37.5665,
+    "zoom": 12
+  }},
+  "layers": [
+    {{
+      "type": "path",
+      "data": [
+        {{
+          "path": [
+            [126.9780, 37.5665],
+            [127.0276, 37.4979],
+            [127.0495, 37.5142]
+          ],
+          "color": [255, 0, 0, 200],
+          "width": 5,
+          "name": "배송 경로 1"
+        }}
+      ]
+    }}
+  ]
+}}
+\`\`\`
+
+**Map 예시 3 - Hexagon (히트맵):**
+\`\`\`map
+{{
+  "initialViewState": {{
+    "longitude": 126.9780,
+    "latitude": 37.5665,
+    "zoom": 11,
+    "pitch": 45
+  }},
+  "layers": [
+    {{
+      "type": "hexagon",
+      "data": [
+        {{ "position": [126.9780, 37.5665], "weight": 100 }},
+        {{ "position": [127.0276, 37.4979], "weight": 150 }},
+        {{ "position": [126.9849, 37.5636], "weight": 80 }}
+      ],
+      "radius": 500,
+      "elevationScale": 20,
+      "extruded": true
+    }}
+  ]
+}}
+\`\`\`
+
+**Map 사용 예시:**
+- "전국 배출권 거래소 위치" → Scatterplot
+- "배송 차량 이동 경로" → Path
+- "지역별 배출량 분포" → Hexagon
+- "공장 위치 및 배출 시설" → Scatterplot + Polygon
+
+---
+
 **🔄 Mermaid 사용법 (프로세스/플로우):**
 - **사용 시점**: 절차, 프로세스, 시스템 흐름, 상태 변화 등을 시각화할 때
 - **코드 블록**: \`\`\`mermaid 로 시작
@@ -200,11 +298,15 @@ flowchart TD
    - 예: "배출권 구매 절차는?" → Flowchart
 3. **테이블 데이터** → AG Grid
    - 예: "기업별 배출량 현황" → Grid Table
+4. **위치/지리 데이터** → Map (scatterplot, path, hexagon)
+   - 예: "전국 배출권 거래소 위치는?" → Scatterplot Map
+   - 예: "지역별 배출량 분포는?" → Hexagon Map
+   - 예: "배송 경로를 보여줘" → Path Map
 
 **답변 작성 체크리스트:**
 - [ ] 핵심 답변부터 시작했는가?
 - [ ] 출처 문서를 명시했는가?
-- [ ] 시각화가 필요한가? (데이터 → AG Charts, 프로세스 → Mermaid)
+- [ ] 시각화가 필요한가? (데이터 → AG Charts, 프로세스 → Mermaid, 위치 → Map)
 - [ ] 실행 가능한 조언을 제공했는가?
 - [ ] **추가 질문 3개를 제시했는가?** ⭐ (가장 중요!)
 - [ ] 추가 질문이 구체적이고 실용적인가?
@@ -267,7 +369,7 @@ flowchart TD
 
 **최종 확인사항:**
 ✅ 모든 답변 끝에 추가 질문 3개 포함
-✅ 시각화 도구 올바르게 선택 (데이터 → AG Charts, 프로세스 → Mermaid, 테이블 → AG Grid)
+✅ 시각화 도구 올바르게 선택 (데이터 → AG Charts, 프로세스 → Mermaid, 테이블 → AG Grid, 위치 → Map)
 ✅ 출처 명시
 ✅ 친근하고 전문적인 톤
 
