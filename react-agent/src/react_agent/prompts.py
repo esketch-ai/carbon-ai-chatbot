@@ -84,62 +84,62 @@ SYSTEM_PROMPT = """당신은 후시파트너스의 탄소 배출권 전문 상�
 
 **AG Charts 예시 1 - Pie Chart (비율 표시):**
 \`\`\`agchart
-{
+{{
   "data": [
-    { "category": "Scope 1", "value": 45 },
-    { "category": "Scope 2", "value": 35 },
-    { "category": "Scope 3", "value": 20 }
+    {{ "category": "Scope 1", "value": 45 }},
+    {{ "category": "Scope 2", "value": 35 }},
+    {{ "category": "Scope 3", "value": 20 }}
   ],
-  "series": [{
+  "series": [{{
     "type": "pie",
     "angleKey": "value",
     "legendItemKey": "category"
-  }],
-  "title": {
+  }}],
+  "title": {{
     "text": "배출권 유형별 비중"
-  }
-}
+  }}
+}}
 \`\`\`
 
 **AG Charts 예시 2 - Bar Chart (막대 그래프):**
 \`\`\`agchart
-{
+{{
   "data": [
-    { "month": "1월", "emissions": 120 },
-    { "month": "2월", "emissions": 95 },
-    { "month": "3월", "emissions": 110 }
+    {{ "month": "1월", "emissions": 120 }},
+    {{ "month": "2월", "emissions": 95 }},
+    {{ "month": "3월", "emissions": 110 }}
   ],
-  "series": [{
+  "series": [{{
     "type": "bar",
     "xKey": "month",
     "yKey": "emissions",
     "yName": "배출량 (tCO2)"
-  }],
-  "title": {
+  }}],
+  "title": {{
     "text": "월별 배출량"
-  }
-}
+  }}
+}}
 \`\`\`
 
 **AG Charts 예시 3 - Line Chart (추이):**
 \`\`\`agchart
-{
+{{
   "data": [
-    { "year": "2021", "price": 25000 },
-    { "year": "2022", "price": 28000 },
-    { "year": "2023", "price": 32000 },
-    { "year": "2024", "price": 35000 }
+    {{ "year": "2021", "price": 25000 }},
+    {{ "year": "2022", "price": 28000 }},
+    {{ "year": "2023", "price": 32000 }},
+    {{ "year": "2024", "price": 35000 }}
   ],
-  "series": [{
+  "series": [{{
     "type": "line",
     "xKey": "year",
     "yKey": "price",
     "yName": "가격 (원/tCO2)"
-  }],
-  "title": {
+  }}],
+  "title": {{
     "text": "배출권 가격 추이"
-  }
-}
+  }}
+}}
 \`\`\`
 
 ---
@@ -151,18 +151,18 @@ SYSTEM_PROMPT = """당신은 후시파트너스의 탄소 배출권 전문 상�
 
 **AG Grid 예시:**
 \`\`\`aggrid
-{
+{{
   "columnDefs": [
-    { "field": "company", "headerName": "기업명" },
-    { "field": "emissions", "headerName": "배출량 (tCO2)" },
-    { "field": "target", "headerName": "목표 (tCO2)" }
+    {{ "field": "company", "headerName": "기업명" }},
+    {{ "field": "emissions", "headerName": "배출량 (tCO2)" }},
+    {{ "field": "target", "headerName": "목표 (tCO2)" }}
   ],
   "rowData": [
-    { "company": "A사", "emissions": 15000, "target": 12000 },
-    { "company": "B사", "emissions": 8000, "target": 8500 },
-    { "company": "C사", "emissions": 20000, "target": 18000 }
+    {{ "company": "A사", "emissions": 15000, "target": 12000 }},
+    {{ "company": "B사", "emissions": 8000, "target": 8500 }},
+    {{ "company": "C사", "emissions": 20000, "target": 18000 }}
   ]
-}
+}}
 \`\`\`
 
 ---
@@ -185,7 +185,7 @@ SYSTEM_PROMPT = """당신은 후시파트너스의 탄소 배출권 전문 상�
 \`\`\`mermaid
 flowchart TD
     A["배출권 구매 신청"] --> B["서류 검토"]
-    B --> C{"승인 여부"}
+    B --> C{{"승인 여부"}}
     C -->|승인| D["배출권 발급"]
     C -->|거부| E["재신청 안내"]
 \`\`\`
