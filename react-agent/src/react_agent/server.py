@@ -94,11 +94,18 @@ def serialize_chunk(chunk):
 
 
 def normalize_stream_mode(raw_mode: Any, default: str = "values") -> str:
-    """Normalize stream mode from request body to a single mode string."""
+    """Normalize stream mode from request body to a single mode string.
+
+    Prioritizes 'values' mode for stability, as it returns complete state dicts.
+    Falls back to 'messages' or other modes if 'values' is not available.
+    """
     if raw_mode is None:
         return default
     if isinstance(raw_mode, list) and raw_mode:
-        # SDK sends an array; we currently support a single mode at a time.
+        # SDK sends an array; prioritize 'values' mode for stability
+        if "values" in raw_mode:
+            return "values"
+        # Otherwise use first mode
         return str(raw_mode[0])
     if isinstance(raw_mode, str):
         return raw_mode
@@ -581,15 +588,34 @@ async def create_run_stream(thread_id: str, request: Request):
                     # stream_mode="messages" returns tuple: (node_name, messages)
                     # stream_mode="values" returns dict: {state}
                     if isinstance(chunk, tuple):
-                        # Format: (node_name, messages)
-                        node_name, messages = chunk
-                        print(f"[STREAM] Node: {node_name}, Messages: {len(messages) if isinstance(messages, list) else 'N/A'}")
+                        print(f"[STREAM] Tuple length: {len(chunk)}")
+
+                        # Inspect tuple structure
+                        if len(chunk) == 2:
+                            first, second = chunk
+                            print(f"[STREAM] First element type: {type(first).__name__}")
+                            print(f"[STREAM] Second element type: {type(second).__name__}")
+
+                            # Check if first element is a string (node name) or a message
+                            if isinstance(first, str):
+                                # Standard format: (node_name, messages)
+                                node_name = first
+                                messages = second if isinstance(second, list) else [second]
+                                print(f"[STREAM] Node: {node_name}, Messages count: {len(messages)}")
+                            else:
+                                # Alternative format: might be (message, message) or other
+                                # Treat both as messages
+                                messages = [first, second] if hasattr(first, 'content') else []
+                                print(f"[STREAM] Non-standard tuple format, extracted {len(messages)} messages")
+                        else:
+                            print(f"[STREAM WARNING] Unexpected tuple length: {len(chunk)}")
+                            messages = []
 
                         # Convert to dict format for consistency
                         chunk_data = {"messages": messages}
 
                         # Debug: print RAW messages
-                        if isinstance(messages, list):
+                        if messages:
                             print(f"[STREAM] Messages in chunk: {len(messages)}")
                             for idx, msg in enumerate(messages):
                                 msg_type = type(msg).__name__
@@ -636,11 +662,18 @@ async def create_run_stream(thread_id: str, request: Request):
 
                     # Debug: print SERIALIZED messages
                     if "messages" in serialized_chunk:
-                        print(f"[STREAM] Serialized messages: {len(serialized_chunk['messages'])}")
-                        for idx, msg in enumerate(serialized_chunk['messages']):
-                            content = msg.get('content', 'NO_CONTENT')
-                            content_preview = str(content)[:200] if content else 'EMPTY'
-                            print(f"[STREAM]   Serialized msg {idx}: content={content_preview}")
+                        messages_data = serialized_chunk['messages']
+                        if isinstance(messages_data, list):
+                            print(f"[STREAM] Serialized messages: {len(messages_data)}")
+                            for idx, msg in enumerate(messages_data):
+                                if isinstance(msg, dict):
+                                    content = msg.get('content', 'NO_CONTENT')
+                                    content_preview = str(content)[:200] if content else 'EMPTY'
+                                    print(f"[STREAM]   Serialized msg {idx}: content={content_preview}")
+                                else:
+                                    print(f"[STREAM]   Serialized msg {idx}: type={type(msg).__name__}, value={str(msg)[:100]}")
+                        else:
+                            print(f"[STREAM] Serialized messages is not a list: {type(messages_data).__name__}")
 
                     # Send as stream_mode event (SDK understands this)
                     stream_event = {
