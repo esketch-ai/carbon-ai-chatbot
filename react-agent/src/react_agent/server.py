@@ -92,25 +92,6 @@ def serialize_chunk(chunk):
     else:
         return chunk
 
-
-def normalize_stream_mode(raw_mode: Any, default: str = "values") -> str:
-    """Normalize stream mode from request body to a single mode string.
-
-    Prioritizes 'values' mode for stability, as it returns complete state dicts.
-    Falls back to 'messages' or other modes if 'values' is not available.
-    """
-    if raw_mode is None:
-        return default
-    if isinstance(raw_mode, list) and raw_mode:
-        # SDK sends an array; prioritize 'values' mode for stability
-        if "values" in raw_mode:
-            return "values"
-        # Otherwise use first mode
-        return str(raw_mode[0])
-    if isinstance(raw_mode, str):
-        return raw_mode
-    return default
-
 # Initialize FastAPI app
 app = FastAPI(
     title="CarbonAI Agent API",
@@ -234,7 +215,6 @@ async def stream_agent(request: ChatRequest):
 
         async def generate():
             """Generate streaming response."""
-            import asyncio
             try:
                 async for chunk in graph.astream(input_data, config=config):
                     # Extract message content from chunk
@@ -245,10 +225,6 @@ async def stream_agent(request: ChatRequest):
 
                 yield "data: [DONE]\n\n"
 
-            except (GeneratorExit, asyncio.CancelledError):
-                print(f"[STREAM] Client disconnected in stream_agent")
-                # Clean exit - client already disconnected
-                return
             except Exception as e:
                 yield f"data: Error: {str(e)}\n\n"
 
@@ -413,8 +389,6 @@ async def create_run(thread_id: str, request: Request):
         assistant_id = body.get("assistant_id", "agent")
         config = body.get("config", {})
         stream = body.get("stream", False)
-        requested_stream_mode = body.get("stream_mode") or body.get("streamMode")
-        stream_mode = normalize_stream_mode(requested_stream_mode, default="values")
 
         # Prepare user message
         if messages and len(messages) > 0:
@@ -454,18 +428,13 @@ async def create_run(thread_id: str, request: Request):
             # Streaming response
             async def generate():
                 """Generate streaming response in LangGraph Cloud format."""
-                import asyncio
                 try:
-                    async for chunk in graph.astream(
-                        graph_input,
-                        config=graph_config,
-                        stream_mode=stream_mode
-                    ):
+                    async for chunk in graph.astream(graph_input, config=graph_config):
                         # Serialize chunk to JSON-serializable format
                         serialized_chunk = serialize_chunk(chunk)
                         # Format as LangGraph Cloud stream event
                         event = {
-                            "event": stream_mode,
+                            "event": "values",
                             "data": serialized_chunk
                         }
                         yield f"data: {json.dumps(event)}\n\n"
@@ -476,10 +445,6 @@ async def create_run(thread_id: str, request: Request):
                     }
                     yield f"data: {json.dumps(end_event)}\n\n"
 
-                except (GeneratorExit, asyncio.CancelledError):
-                    print(f"[STREAM] Client disconnected in create_run")
-                    # Clean exit - client already disconnected
-                    return
                 except Exception as e:
                     error_event = {
                         "event": "error",
@@ -525,8 +490,6 @@ async def create_run_stream(thread_id: str, request: Request):
 
         # Get configuration
         config = body.get("config", {})
-        requested_stream_mode = body.get("stream_mode") or body.get("streamMode")
-        stream_mode = normalize_stream_mode(requested_stream_mode, default="messages")
 
         # Prepare user message
         if messages and len(messages) > 0:
@@ -558,7 +521,6 @@ async def create_run_stream(thread_id: str, request: Request):
             }
         }
         print(f"[STREAM] Graph config: {graph_config}")
-        print(f"[STREAM] Stream mode: {stream_mode}")
 
         # Prepare input for graph
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
@@ -572,129 +534,54 @@ async def create_run_stream(thread_id: str, request: Request):
         async def generate():
             """Generate streaming response."""
             import asyncio
-            chunk_count = 0  # Define outside try block to ensure it's available in except
             try:
-                # Use requested stream mode (e.g. "messages" for token streaming)
-                async for chunk in graph.astream(
-                    graph_input,
-                    config=graph_config,
-                    stream_mode=stream_mode
-                ):
+                chunk_count = 0
+
+                # Use "values" mode - returns complete state after each node
+                # This matches frontend streamMode: ["values"]
+                async for chunk in graph.astream(graph_input, config=graph_config, stream_mode="values"):
                     chunk_count += 1
                     print(f"\n[STREAM] ===== Chunk {chunk_count} =====")
-                    print(f"[STREAM] Chunk type: {type(chunk)}")
+                    print(f"[STREAM] Chunk keys: {list(chunk.keys())}")
 
-                    # Handle different chunk formats based on stream_mode
-                    # stream_mode="messages" returns tuple: (node_name, messages)
-                    # stream_mode="values" returns dict: {state}
-                    if isinstance(chunk, tuple):
-                        print(f"[STREAM] Tuple length: {len(chunk)}")
-
-                        # Inspect tuple structure
-                        if len(chunk) == 2:
-                            first, second = chunk
-                            print(f"[STREAM] First element type: {type(first).__name__}")
-                            print(f"[STREAM] Second element type: {type(second).__name__}")
-
-                            # Check if first element is a string (node name) or a message
-                            if isinstance(first, str):
-                                # Standard format: (node_name, messages)
-                                node_name = first
-                                messages = second if isinstance(second, list) else [second]
-                                print(f"[STREAM] Node: {node_name}, Messages count: {len(messages)}")
-                            else:
-                                # Alternative format: might be (message, message) or other
-                                # Treat both as messages
-                                messages = [first, second] if hasattr(first, 'content') else []
-                                print(f"[STREAM] Non-standard tuple format, extracted {len(messages)} messages")
-                        else:
-                            print(f"[STREAM WARNING] Unexpected tuple length: {len(chunk)}")
-                            messages = []
-
-                        # Convert to dict format for consistency
-                        chunk_data = {"messages": messages}
-
-                        # Debug: print RAW messages
-                        if messages:
-                            print(f"[STREAM] Messages in chunk: {len(messages)}")
-                            for idx, msg in enumerate(messages):
-                                msg_type = type(msg).__name__
-                                print(f"[STREAM]   Message {idx}: type={msg_type}")
-                                if hasattr(msg, 'content'):
-                                    raw_content = msg.content
-                                    content_type = type(raw_content).__name__
-                                    if isinstance(raw_content, str):
-                                        preview = raw_content[:200]
-                                    elif isinstance(raw_content, list):
-                                        preview = f"LIST with {len(raw_content)} items"
-                                    else:
-                                        preview = str(raw_content)[:200]
-                                    print(f"[STREAM]     Raw content type: {content_type}")
-                                    print(f"[STREAM]     Raw content preview: {preview}")
-                    elif isinstance(chunk, dict):
-                        # Format: {state}
-                        print(f"[STREAM] Chunk keys: {list(chunk.keys())}")
-                        chunk_data = chunk
-
-                        # Debug: print RAW messages BEFORE serialization
-                        if "messages" in chunk_data:
-                            print(f"[STREAM] Messages in chunk: {len(chunk_data['messages'])}")
-                            for idx, msg in enumerate(chunk_data['messages']):
-                                msg_type = type(msg).__name__
-                                print(f"[STREAM]   Message {idx}: type={msg_type}")
-                                if hasattr(msg, 'content'):
-                                    raw_content = msg.content
-                                    content_type = type(raw_content).__name__
-                                    if isinstance(raw_content, str):
-                                        preview = raw_content[:200]
-                                    elif isinstance(raw_content, list):
-                                        preview = f"LIST with {len(raw_content)} items"
-                                    else:
-                                        preview = str(raw_content)[:200]
-                                    print(f"[STREAM]     Raw content type: {content_type}")
-                                    print(f"[STREAM]     Raw content preview: {preview}")
-                    else:
-                        print(f"[STREAM WARNING] Unexpected chunk type: {type(chunk)}")
-                        continue
+                    # Debug: print RAW messages BEFORE serialization
+                    if "messages" in chunk:
+                        print(f"[STREAM] Messages in chunk: {len(chunk['messages'])}")
+                        for idx, msg in enumerate(chunk['messages']):
+                            msg_type = type(msg).__name__
+                            print(f"[STREAM]   Message {idx}: type={msg_type}")
+                            if hasattr(msg, 'content'):
+                                raw_content = msg.content
+                                content_type = type(raw_content).__name__
+                                if isinstance(raw_content, str):
+                                    preview = raw_content[:200]
+                                elif isinstance(raw_content, list):
+                                    preview = f"LIST with {len(raw_content)} items"
+                                else:
+                                    preview = str(raw_content)[:200]
+                                print(f"[STREAM]     Raw content type: {content_type}")
+                                print(f"[STREAM]     Raw content preview: {preview}")
 
                     # Serialize chunk to JSON-serializable format
-                    serialized_chunk = serialize_chunk(chunk_data)
+                    serialized_chunk = serialize_chunk(chunk)
 
                     # Debug: print SERIALIZED messages
                     if "messages" in serialized_chunk:
-                        messages_data = serialized_chunk['messages']
-                        if isinstance(messages_data, list):
-                            print(f"[STREAM] Serialized messages: {len(messages_data)}")
-                            for idx, msg in enumerate(messages_data):
-                                if isinstance(msg, dict):
-                                    content = msg.get('content', 'NO_CONTENT')
-                                    content_preview = str(content)[:200] if content else 'EMPTY'
-                                    print(f"[STREAM]   Serialized msg {idx}: content={content_preview}")
-                                else:
-                                    print(f"[STREAM]   Serialized msg {idx}: type={type(msg).__name__}, value={str(msg)[:100]}")
-                        else:
-                            print(f"[STREAM] Serialized messages is not a list: {type(messages_data).__name__}")
+                        print(f"[STREAM] Serialized messages: {len(serialized_chunk['messages'])}")
+                        for idx, msg in enumerate(serialized_chunk['messages']):
+                            content = msg.get('content', 'NO_CONTENT')
+                            content_preview = str(content)[:200] if content else 'EMPTY'
+                            print(f"[STREAM]   Serialized msg {idx}: content={content_preview}")
 
-                    # Send as stream_mode event (SDK understands this)
+                    # Send as values event (SDK understands this)
                     stream_event = {
-                        "event": stream_mode,
+                        "event": "values",
                         "data": serialized_chunk
                     }
 
-                    try:
-                        event_json = json.dumps(stream_event, ensure_ascii=False)
-                        print(f"[STREAM] Event JSON preview: {event_json[:300]}...")
-                        yield f"data: {event_json}\n\n"
-                    except (TypeError, ValueError) as json_error:
-                        print(f"[STREAM] JSON serialization error: {json_error}")
-                        # Try with ensure_ascii=True as fallback
-                        try:
-                            event_json = json.dumps(stream_event, ensure_ascii=True)
-                            yield f"data: {event_json}\n\n"
-                        except Exception as fallback_error:
-                            print(f"[STREAM] Fallback JSON serialization also failed: {fallback_error}")
-                            # Skip this chunk and continue
-                            continue
+                    event_json = json.dumps(stream_event, ensure_ascii=False)
+                    print(f"[STREAM] Event JSON preview: {event_json[:300]}...")
+                    yield f"data: {event_json}\n\n"
 
                 print(f"[STREAM] Stream completed with {chunk_count} chunks")
 
@@ -706,12 +593,8 @@ async def create_run_stream(thread_id: str, request: Request):
 
             except asyncio.CancelledError:
                 print(f"[STREAM] Client disconnected (CancelledError) after {chunk_count} chunks")
-                # Clean exit - client already disconnected
-                return
-            except GeneratorExit:
-                print(f"[STREAM] Client disconnected (GeneratorExit) after {chunk_count} chunks")
-                # Clean exit - client already disconnected
-                return
+                # Don't yield error event - client already disconnected
+                raise  # Re-raise to properly cleanup
             except Exception as e:
                 print(f"[STREAM ERROR] {e}")
                 import traceback
@@ -729,8 +612,6 @@ async def create_run_stream(thread_id: str, request: Request):
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",  # Disable Nginx buffering for streaming
-                "X-Content-Type-Options": "nosniff",
-                "Access-Control-Allow-Origin": "*",
             }
         )
 
