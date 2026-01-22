@@ -565,9 +565,8 @@ async def create_run_stream(thread_id: str, request: Request):
         async def generate():
             """Generate streaming response."""
             import asyncio
+            chunk_count = 0  # Define outside try block to ensure it's available in except
             try:
-                chunk_count = 0
-
                 # Use requested stream mode (e.g. "messages" for token streaming)
                 async for chunk in graph.astream(
                     graph_input,
@@ -576,28 +575,64 @@ async def create_run_stream(thread_id: str, request: Request):
                 ):
                     chunk_count += 1
                     print(f"\n[STREAM] ===== Chunk {chunk_count} =====")
-                    print(f"[STREAM] Chunk keys: {list(chunk.keys())}")
+                    print(f"[STREAM] Chunk type: {type(chunk)}")
 
-                    # Debug: print RAW messages BEFORE serialization
-                    if "messages" in chunk:
-                        print(f"[STREAM] Messages in chunk: {len(chunk['messages'])}")
-                        for idx, msg in enumerate(chunk['messages']):
-                            msg_type = type(msg).__name__
-                            print(f"[STREAM]   Message {idx}: type={msg_type}")
-                            if hasattr(msg, 'content'):
-                                raw_content = msg.content
-                                content_type = type(raw_content).__name__
-                                if isinstance(raw_content, str):
-                                    preview = raw_content[:200]
-                                elif isinstance(raw_content, list):
-                                    preview = f"LIST with {len(raw_content)} items"
-                                else:
-                                    preview = str(raw_content)[:200]
-                                print(f"[STREAM]     Raw content type: {content_type}")
-                                print(f"[STREAM]     Raw content preview: {preview}")
+                    # Handle different chunk formats based on stream_mode
+                    # stream_mode="messages" returns tuple: (node_name, messages)
+                    # stream_mode="values" returns dict: {state}
+                    if isinstance(chunk, tuple):
+                        # Format: (node_name, messages)
+                        node_name, messages = chunk
+                        print(f"[STREAM] Node: {node_name}, Messages: {len(messages) if isinstance(messages, list) else 'N/A'}")
+
+                        # Convert to dict format for consistency
+                        chunk_data = {"messages": messages}
+
+                        # Debug: print RAW messages
+                        if isinstance(messages, list):
+                            print(f"[STREAM] Messages in chunk: {len(messages)}")
+                            for idx, msg in enumerate(messages):
+                                msg_type = type(msg).__name__
+                                print(f"[STREAM]   Message {idx}: type={msg_type}")
+                                if hasattr(msg, 'content'):
+                                    raw_content = msg.content
+                                    content_type = type(raw_content).__name__
+                                    if isinstance(raw_content, str):
+                                        preview = raw_content[:200]
+                                    elif isinstance(raw_content, list):
+                                        preview = f"LIST with {len(raw_content)} items"
+                                    else:
+                                        preview = str(raw_content)[:200]
+                                    print(f"[STREAM]     Raw content type: {content_type}")
+                                    print(f"[STREAM]     Raw content preview: {preview}")
+                    elif isinstance(chunk, dict):
+                        # Format: {state}
+                        print(f"[STREAM] Chunk keys: {list(chunk.keys())}")
+                        chunk_data = chunk
+
+                        # Debug: print RAW messages BEFORE serialization
+                        if "messages" in chunk_data:
+                            print(f"[STREAM] Messages in chunk: {len(chunk_data['messages'])}")
+                            for idx, msg in enumerate(chunk_data['messages']):
+                                msg_type = type(msg).__name__
+                                print(f"[STREAM]   Message {idx}: type={msg_type}")
+                                if hasattr(msg, 'content'):
+                                    raw_content = msg.content
+                                    content_type = type(raw_content).__name__
+                                    if isinstance(raw_content, str):
+                                        preview = raw_content[:200]
+                                    elif isinstance(raw_content, list):
+                                        preview = f"LIST with {len(raw_content)} items"
+                                    else:
+                                        preview = str(raw_content)[:200]
+                                    print(f"[STREAM]     Raw content type: {content_type}")
+                                    print(f"[STREAM]     Raw content preview: {preview}")
+                    else:
+                        print(f"[STREAM WARNING] Unexpected chunk type: {type(chunk)}")
+                        continue
 
                     # Serialize chunk to JSON-serializable format
-                    serialized_chunk = serialize_chunk(chunk)
+                    serialized_chunk = serialize_chunk(chunk_data)
 
                     # Debug: print SERIALIZED messages
                     if "messages" in serialized_chunk:
