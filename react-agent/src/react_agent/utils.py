@@ -51,6 +51,10 @@ def mermaid_to_image_url(mermaid_code: str, output_format: str = "svg") -> str:
     # mermaid 코드 정리 (앞뒤 공백 제거)
     mermaid_code = mermaid_code.strip()
 
+    # \n을 <br/>로 변환 (Mermaid에서 줄바꿈을 위해)
+    # 단, 실제 줄바꿈(개행 문자)은 그대로 유지
+    mermaid_code = mermaid_code.replace('\\n', '<br/>')
+
     # zlib으로 압축 후 base64 인코딩 (URL-safe)
     compressed = zlib.compress(mermaid_code.encode('utf-8'), level=9)
     encoded = base64.urlsafe_b64encode(compressed).decode('ascii')
