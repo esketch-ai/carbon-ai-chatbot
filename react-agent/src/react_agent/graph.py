@@ -157,7 +157,12 @@ async def call_model(
 
     # Initialize the model with tool binding. Change the model or add more tools here.
     # ChatAnthropic 객체 생성
-    llm = ChatAnthropic(temperature=0.1, model=configuration.model)
+    # Enable streaming so LangGraph can emit token chunks during astream
+    llm = ChatAnthropic(
+        temperature=0.1,
+        model=configuration.model,
+        streaming=True
+    )
     model = llm.bind_tools(all_tools)
     print(f"[CALL_MODEL] Model initialized with tools bound")
 

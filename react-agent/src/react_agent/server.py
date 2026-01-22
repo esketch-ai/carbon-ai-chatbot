@@ -3,25 +3,25 @@
 import os
 import uuid
 import json
+import base64
 from typing import Any, Dict, Optional, List
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
 from dotenv import load_dotenv
 
-from react_agent.graph import graph
-from react_agent.configuration import Configuration
-from langchain_core.messages import AIMessage, HumanMessage
+from react_agent.graph import graph   # 기존 langgraph 그래프 임포트
+from react_agent.configuration import Configuration  # 기존 설정 클래스
+from langchain_core.messages import AIMessage, HumanMessage   # 랭체인 메세지 타입 임포트
 
 # Load environment variables
 load_dotenv()
 
 
 # Helper function to convert LangChain messages to JSON-serializable format
-def message_to_dict(msg):
-    """Convert a LangChain message to a JSON-serializable dictionary."""
+def message_to_dict(msg):  # 랭체인 메세지를 json으로 변환 -> 프론트엔드 sdk 형식 / 호환을 위함
 
     # CRITICAL: Extract content BEFORE serialization to avoid "complex" conversion
     # LangChain's dict()/model_dump() converts list content to "complex" string
@@ -92,6 +92,18 @@ def serialize_chunk(chunk):
         return message_to_dict(chunk)
     else:
         return chunk
+
+
+def normalize_stream_mode(raw_mode: Any, default: str = "values") -> str:
+    """Normalize stream mode from request body to a single mode string."""
+    if raw_mode is None:
+        return default
+    if isinstance(raw_mode, list) and raw_mode:
+        # SDK sends an array; we currently support a single mode at a time.
+        return str(raw_mode[0])
+    if isinstance(raw_mode, str):
+        return raw_mode
+    return default
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -390,6 +402,8 @@ async def create_run(thread_id: str, request: Request):
         assistant_id = body.get("assistant_id", "agent")
         config = body.get("config", {})
         stream = body.get("stream", False)
+        requested_stream_mode = body.get("stream_mode") or body.get("streamMode")
+        stream_mode = normalize_stream_mode(requested_stream_mode, default="values")
 
         # Prepare user message
         if messages and len(messages) > 0:
@@ -430,12 +444,16 @@ async def create_run(thread_id: str, request: Request):
             async def generate():
                 """Generate streaming response in LangGraph Cloud format."""
                 try:
-                    async for chunk in graph.astream(graph_input, config=graph_config):
+                    async for chunk in graph.astream(
+                        graph_input,
+                        config=graph_config,
+                        stream_mode=stream_mode
+                    ):
                         # Serialize chunk to JSON-serializable format
                         serialized_chunk = serialize_chunk(chunk)
                         # Format as LangGraph Cloud stream event
                         event = {
-                            "event": "values",
+                            "event": stream_mode,
                             "data": serialized_chunk
                         }
                         yield f"data: {json.dumps(event)}\n\n"
@@ -491,6 +509,8 @@ async def create_run_stream(thread_id: str, request: Request):
 
         # Get configuration
         config = body.get("config", {})
+        requested_stream_mode = body.get("stream_mode") or body.get("streamMode")
+        stream_mode = normalize_stream_mode(requested_stream_mode, default="messages")
 
         # Prepare user message
         if messages and len(messages) > 0:
@@ -522,6 +542,7 @@ async def create_run_stream(thread_id: str, request: Request):
             }
         }
         print(f"[STREAM] Graph config: {graph_config}")
+        print(f"[STREAM] Stream mode: {stream_mode}")
 
         # Prepare input for graph
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
@@ -538,8 +559,12 @@ async def create_run_stream(thread_id: str, request: Request):
             try:
                 chunk_count = 0
 
-                # Use standard astream (works with SDK)
-                async for chunk in graph.astream(graph_input, config=graph_config, stream_mode="values"):
+                # Use requested stream mode (e.g. "messages" for token streaming)
+                async for chunk in graph.astream(
+                    graph_input,
+                    config=graph_config,
+                    stream_mode=stream_mode
+                ):
                     chunk_count += 1
                     print(f"\n[STREAM] ===== Chunk {chunk_count} =====")
                     print(f"[STREAM] Chunk keys: {list(chunk.keys())}")
@@ -573,9 +598,9 @@ async def create_run_stream(thread_id: str, request: Request):
                             content_preview = str(content)[:200] if content else 'EMPTY'
                             print(f"[STREAM]   Serialized msg {idx}: content={content_preview}")
 
-                    # Send as values event (SDK understands this)
+                    # Send as stream_mode event (SDK understands this)
                     stream_event = {
-                        "event": "values",
+                        "event": stream_mode,
                         "data": serialized_chunk
                     }
 
@@ -660,6 +685,164 @@ async def get_thread_history(thread_id: str, request: Request):
         import traceback
         traceback.print_exc()
         return []
+
+
+# ============= OCR & Image Processing Endpoints =============
+
+class OCRRequest(BaseModel):
+    """OCR 요청 모델"""
+    image: str = Field(..., description="Base64 인코딩된 이미지")
+    return_details: bool = Field(False, description="상세 정보 포함 여부")
+
+
+class ImageAnalysisRequest(BaseModel):
+    """이미지 분석 요청 모델 (Vision AI + OCR)"""
+    image: str = Field(..., description="Base64 인코딩된 이미지")
+    prompt: Optional[str] = Field(None, description="이미지 분석 프롬프트")
+    use_ocr: bool = Field(True, description="OCR 텍스트 추출 사용")
+    thread_id: Optional[str] = Field(None, description="Thread ID")
+
+
+@app.post("/ocr")
+async def ocr_extract(request: OCRRequest):
+    """이미지에서 텍스트 추출 (PaddleOCR)
+
+    Args:
+        request: OCRRequest with base64 encoded image
+
+    Returns:
+        추출된 텍스트 및 상세 정보
+    """
+    try:
+        from react_agent.ocr_service import extract_text_from_base64
+
+        result = extract_text_from_base64(
+            request.image,
+            return_details=request.return_details
+        )
+
+        return result
+
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="OCR 서비스를 사용할 수 없습니다. PaddleOCR이 설치되지 않았습니다."
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OCR 처리 오류: {str(e)}")
+
+
+@app.post("/ocr/table")
+async def ocr_extract_table(request: OCRRequest):
+    """이미지에서 표 데이터 추출
+
+    Args:
+        request: OCRRequest with base64 encoded image
+
+    Returns:
+        구조화된 표 데이터
+    """
+    try:
+        from react_agent.ocr_service import extract_table_data, decode_base64_image
+
+        image_data = decode_base64_image(request.image)
+        result = extract_table_data(image_data)
+
+        return result
+
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="OCR 서비스를 사용할 수 없습니다."
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"표 추출 오류: {str(e)}")
+
+
+@app.post("/analyze-image")
+async def analyze_image(request: ImageAnalysisRequest):
+    """이미지 분석 (Vision AI + OCR 결합)
+
+    Claude Vision으로 이미지를 이해하고, OCR로 정확한 텍스트를 추출합니다.
+
+    Args:
+        request: ImageAnalysisRequest
+
+    Returns:
+        Vision AI 분석 결과 + OCR 텍스트
+    """
+    try:
+        result = {
+            "success": True,
+            "vision_analysis": None,
+            "ocr_text": None
+        }
+
+        # 1. OCR 텍스트 추출 (선택적)
+        if request.use_ocr:
+            try:
+                from react_agent.ocr_service import extract_text_from_base64
+                ocr_result = extract_text_from_base64(request.image)
+                result["ocr_text"] = ocr_result.get("full_text", "")
+                result["ocr_details"] = ocr_result
+            except Exception as e:
+                print(f"[OCR] 텍스트 추출 실패 (계속 진행): {e}")
+                result["ocr_error"] = str(e)
+
+        # 2. Vision AI 분석을 위한 메시지 구성
+        # 이미지는 프론트엔드에서 직접 메시지에 포함시켜 전송하도록 함
+        # 여기서는 OCR 결과만 반환
+
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"이미지 분석 오류: {str(e)}")
+
+
+@app.post("/upload-image")
+async def upload_image(file: UploadFile = File(...)):
+    """이미지 파일 업로드 및 Base64 변환
+
+    Args:
+        file: 업로드된 이미지 파일
+
+    Returns:
+        Base64 인코딩된 이미지 데이터
+    """
+    try:
+        # 파일 타입 검증
+        allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"지원하지 않는 파일 형식입니다. 지원 형식: {allowed_types}"
+            )
+
+        # 파일 크기 검증 (10MB 제한)
+        contents = await file.read()
+        if len(contents) > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=400,
+                detail="파일 크기는 10MB를 초과할 수 없습니다."
+            )
+
+        # Base64 인코딩
+        base64_image = base64.b64encode(contents).decode("utf-8")
+        data_url = f"data:{file.content_type};base64,{base64_image}"
+
+        return {
+            "success": True,
+            "filename": file.filename,
+            "content_type": file.content_type,
+            "size": len(contents),
+            "base64": base64_image,
+            "data_url": data_url
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"파일 업로드 오류: {str(e)}")
 
 
 # Run server
