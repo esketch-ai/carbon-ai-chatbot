@@ -530,60 +530,154 @@ async def create_run_stream(thread_id: str, request: Request):
 
         print(f"[STREAM] Starting graph stream with astream_events...")
 
-        # Streaming response using standard astream
+        # Streaming response using astream_events for token-level streaming
         async def generate():
-            """Generate streaming response."""
+            """Generate streaming response with token-level updates."""
             import asyncio
             try:
-                chunk_count = 0
+                # Track state for incremental updates
+                current_ai_message_id = None
+                accumulated_content = ""
+                accumulated_tool_calls = []
+                all_messages = [HumanMessage(content=user_message)]  # Start with user message
+                last_event_kind = None
 
-                # Use "values" mode - returns complete state after each node
-                # This matches frontend streamMode: ["values"]
-                async for chunk in graph.astream(graph_input, config=graph_config, stream_mode="values"):
-                    chunk_count += 1
-                    print(f"\n[STREAM] ===== Chunk {chunk_count} =====")
-                    print(f"[STREAM] Chunk keys: {list(chunk.keys())}")
+                print(f"\n[TOKEN STREAM] Starting token-level streaming...")
 
-                    # Debug: print RAW messages BEFORE serialization
-                    if "messages" in chunk:
-                        print(f"[STREAM] Messages in chunk: {len(chunk['messages'])}")
-                        for idx, msg in enumerate(chunk['messages']):
-                            msg_type = type(msg).__name__
-                            print(f"[STREAM]   Message {idx}: type={msg_type}")
-                            if hasattr(msg, 'content'):
-                                raw_content = msg.content
-                                content_type = type(raw_content).__name__
-                                if isinstance(raw_content, str):
-                                    preview = raw_content[:200]
-                                elif isinstance(raw_content, list):
-                                    preview = f"LIST with {len(raw_content)} items"
+                # Use astream_events for token-level streaming
+                async for event in graph.astream_events(
+                    graph_input,
+                    config=graph_config,
+                    version="v2"
+                ):
+                    kind = event.get("event")
+
+                    # Token streaming from AI model
+                    if kind == "on_chat_model_stream":
+                        chunk_data = event.get("data", {}).get("chunk")
+                        if chunk_data and hasattr(chunk_data, "content"):
+                            token = chunk_data.content
+
+                            # Skip empty tokens
+                            if not token:
+                                continue
+
+                            # Initialize message ID if first token
+                            if current_ai_message_id is None:
+                                current_ai_message_id = getattr(chunk_data, "id", f"ai-{uuid.uuid4()}")
+                                accumulated_content = ""
+                                print(f"[TOKEN STREAM] Starting new AI message: {current_ai_message_id}")
+
+                            # Accumulate token
+                            accumulated_content += token
+
+                            # Create incremental AI message
+                            ai_message = {
+                                "type": "ai",
+                                "content": [{"type": "text", "text": accumulated_content}],
+                                "id": current_ai_message_id,
+                                "tool_calls": [],
+                                "invalid_tool_calls": [],
+                                "additional_kwargs": {},
+                                "response_metadata": {}
+                            }
+
+                            # Send incremental update
+                            stream_event = {
+                                "event": "values",
+                                "data": {
+                                    "messages": [
+                                        message_to_dict(all_messages[0]),  # User message
+                                        ai_message  # Partial AI message
+                                    ]
+                                }
+                            }
+
+                            event_json = json.dumps(stream_event, ensure_ascii=False)
+                            yield f"data: {event_json}\n\n"
+
+                            print(f"[TOKEN STREAM] Sent token (total: {len(accumulated_content)} chars)")
+
+                    # AI model finished - may have tool calls
+                    elif kind == "on_chat_model_end":
+                        output_messages = event.get("data", {}).get("output", {})
+
+                        # Extract tool calls if present
+                        if hasattr(output_messages, "tool_calls"):
+                            accumulated_tool_calls = output_messages.tool_calls or []
+                            print(f"[TOKEN STREAM] AI finished with {len(accumulated_tool_calls)} tool calls")
+
+                            # Send final AI message with tool calls
+                            # Safely extract tool call attributes (handle both dict and object)
+                            serialized_tool_calls = []
+                            for tc in accumulated_tool_calls:
+                                if isinstance(tc, dict):
+                                    serialized_tool_calls.append({
+                                        "name": tc.get("name", ""),
+                                        "args": tc.get("args", {}),
+                                        "id": tc.get("id", ""),
+                                        "type": "tool_call"
+                                    })
                                 else:
-                                    preview = str(raw_content)[:200]
-                                print(f"[STREAM]     Raw content type: {content_type}")
-                                print(f"[STREAM]     Raw content preview: {preview}")
+                                    serialized_tool_calls.append({
+                                        "name": getattr(tc, "name", ""),
+                                        "args": getattr(tc, "args", {}),
+                                        "id": getattr(tc, "id", ""),
+                                        "type": "tool_call"
+                                    })
 
-                    # Serialize chunk to JSON-serializable format
-                    serialized_chunk = serialize_chunk(chunk)
+                            ai_message = {
+                                "type": "ai",
+                                "content": [{"type": "text", "text": accumulated_content}],
+                                "id": current_ai_message_id or f"ai-{uuid.uuid4()}",
+                                "tool_calls": serialized_tool_calls,
+                                "invalid_tool_calls": [],
+                                "additional_kwargs": {},
+                                "response_metadata": getattr(output_messages, "response_metadata", {})
+                            }
 
-                    # Debug: print SERIALIZED messages
-                    if "messages" in serialized_chunk:
-                        print(f"[STREAM] Serialized messages: {len(serialized_chunk['messages'])}")
-                        for idx, msg in enumerate(serialized_chunk['messages']):
-                            content = msg.get('content', 'NO_CONTENT')
-                            content_preview = str(content)[:200] if content else 'EMPTY'
-                            print(f"[STREAM]   Serialized msg {idx}: content={content_preview}")
+                            all_messages.append(AIMessage(
+                                content=accumulated_content,
+                                id=current_ai_message_id,
+                                tool_calls=accumulated_tool_calls
+                            ))
 
-                    # Send as values event (SDK understands this)
-                    stream_event = {
-                        "event": "values",
-                        "data": serialized_chunk
-                    }
+                            stream_event = {
+                                "event": "values",
+                                "data": {
+                                    "messages": [message_to_dict(all_messages[0]), ai_message]
+                                }
+                            }
 
-                    event_json = json.dumps(stream_event, ensure_ascii=False)
-                    print(f"[STREAM] Event JSON preview: {event_json[:300]}...")
-                    yield f"data: {event_json}\n\n"
+                            event_json = json.dumps(stream_event, ensure_ascii=False)
+                            yield f"data: {event_json}\n\n"
+                        else:
+                            # No tool calls - just final message
+                            print(f"[TOKEN STREAM] AI finished without tool calls")
+                            ai_message_obj = AIMessage(
+                                content=accumulated_content,
+                                id=current_ai_message_id or f"ai-{uuid.uuid4()}"
+                            )
+                            all_messages.append(ai_message_obj)
 
-                print(f"[STREAM] Stream completed with {chunk_count} chunks")
+                        # Reset for next message
+                        current_ai_message_id = None
+                        accumulated_content = ""
+
+                    # Tool execution finished
+                    elif kind == "on_tool_end":
+                        tool_output = event.get("data", {}).get("output")
+                        tool_name = event.get("name", "unknown_tool")
+
+                        print(f"[TOKEN STREAM] Tool '{tool_name}' finished")
+
+                        # Add tool message to history
+                        # Tool messages will be sent in next AI response
+                        # For now, just log it
+
+                    last_event_kind = kind
+
+                print(f"[TOKEN STREAM] Stream completed")
 
                 # Send end event
                 end_event = {
