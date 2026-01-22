@@ -94,11 +94,18 @@ def serialize_chunk(chunk):
 
 
 def normalize_stream_mode(raw_mode: Any, default: str = "values") -> str:
-    """Normalize stream mode from request body to a single mode string."""
+    """Normalize stream mode from request body to a single mode string.
+
+    Prioritizes 'values' mode for stability, as it returns complete state dicts.
+    Falls back to 'messages' or other modes if 'values' is not available.
+    """
     if raw_mode is None:
         return default
     if isinstance(raw_mode, list) and raw_mode:
-        # SDK sends an array; we currently support a single mode at a time.
+        # SDK sends an array; prioritize 'values' mode for stability
+        if "values" in raw_mode:
+            return "values"
+        # Otherwise use first mode
         return str(raw_mode[0])
     if isinstance(raw_mode, str):
         return raw_mode
@@ -227,6 +234,7 @@ async def stream_agent(request: ChatRequest):
 
         async def generate():
             """Generate streaming response."""
+            import asyncio
             try:
                 async for chunk in graph.astream(input_data, config=config):
                     # Extract message content from chunk
@@ -237,6 +245,10 @@ async def stream_agent(request: ChatRequest):
 
                 yield "data: [DONE]\n\n"
 
+            except (GeneratorExit, asyncio.CancelledError):
+                print(f"[STREAM] Client disconnected in stream_agent")
+                # Clean exit - client already disconnected
+                return
             except Exception as e:
                 yield f"data: Error: {str(e)}\n\n"
 
@@ -442,6 +454,7 @@ async def create_run(thread_id: str, request: Request):
             # Streaming response
             async def generate():
                 """Generate streaming response in LangGraph Cloud format."""
+                import asyncio
                 try:
                     async for chunk in graph.astream(
                         graph_input,
@@ -463,6 +476,10 @@ async def create_run(thread_id: str, request: Request):
                     }
                     yield f"data: {json.dumps(end_event)}\n\n"
 
+                except (GeneratorExit, asyncio.CancelledError):
+                    print(f"[STREAM] Client disconnected in create_run")
+                    # Clean exit - client already disconnected
+                    return
                 except Exception as e:
                     error_event = {
                         "event": "error",
@@ -549,101 +566,154 @@ async def create_run_stream(thread_id: str, request: Request):
             "messages": [HumanMessage(content=user_message)]
         }
 
-        print(f"[STREAM] Starting token-level streaming...")
+        print(f"[STREAM] Starting graph stream with astream_events...")
 
-        # Token-level streaming using astream_events
+        # Streaming response using standard astream
         async def generate():
-            """Generate streaming response with real-time token updates."""
+            """Generate streaming response."""
             import asyncio
-            event_count = 0
-            token_buffer = []
-
+            chunk_count = 0  # Define outside try block to ensure it's available in except
             try:
-                # Try astream_events for token-level streaming first
-                print(f"[STREAM] Using astream_events for token-level streaming")
-                async for event in graph.astream_events(
+                # Use requested stream mode (e.g. "messages" for token streaming)
+                async for chunk in graph.astream(
                     graph_input,
                     config=graph_config,
-                    version="v2"
+                    stream_mode=stream_mode
                 ):
-                    event_count += 1
-                    event_type = event.get("event")
-                    event_name = event.get("name", "")
+                    chunk_count += 1
+                    print(f"\n[STREAM] ===== Chunk {chunk_count} =====")
+                    print(f"[STREAM] Chunk type: {type(chunk)}")
 
-                    print(f"[STREAM] Event {event_count}: type={event_type}, name={event_name}")
+                    # Handle different chunk formats based on stream_mode
+                    # stream_mode="messages" returns tuple: (node_name, messages)
+                    # stream_mode="values" returns dict: {state}
+                    if isinstance(chunk, tuple):
+                        print(f"[STREAM] Tuple length: {len(chunk)}")
 
-                    # Handle token streaming from chat model
-                    if event_type == "on_chat_model_stream":
-                        # Extract token from the chunk
-                        chunk_data = event.get("data", {})
-                        chunk_obj = chunk_data.get("chunk")
+                        # Inspect tuple structure
+                        if len(chunk) == 2:
+                            first, second = chunk
+                            print(f"[STREAM] First element type: {type(first).__name__}")
+                            print(f"[STREAM] Second element type: {type(second).__name__}")
 
-                        if chunk_obj and hasattr(chunk_obj, "content"):
-                            token = chunk_obj.content
-                            if token:  # Only send non-empty tokens
-                                token_buffer.append(token)
-                                print(f"[STREAM] Token: {token}")
+                            # Check if first element is a string (node name) or a message
+                            if isinstance(first, str):
+                                # Standard format: (node_name, messages)
+                                node_name = first
+                                messages = second if isinstance(second, list) else [second]
+                                print(f"[STREAM] Node: {node_name}, Messages count: {len(messages)}")
+                            else:
+                                # Alternative format: might be (message, message) or other
+                                # Treat both as messages
+                                messages = [first, second] if hasattr(first, 'content') else []
+                                print(f"[STREAM] Non-standard tuple format, extracted {len(messages)} messages")
+                        else:
+                            print(f"[STREAM WARNING] Unexpected tuple length: {len(chunk)}")
+                            messages = []
 
-                                # Send token as custom event for real-time display
-                                token_event = {
-                                    "event": "messages",
-                                    "data": {
-                                        "messages": [{
-                                            "type": "ai",
-                                            "content": [{"type": "text", "text": token}],
-                                            "id": f"token-{event_count}"
-                                        }]
-                                    }
-                                }
-                                yield f"data: {json.dumps(token_event, ensure_ascii=False)}\n\n"
+                        # Convert to dict format for consistency
+                        chunk_data = {"messages": messages}
 
-                    # Handle final message completion
-                    elif event_type == "on_chat_model_end":
-                        print(f"[STREAM] Chat model completed. Total tokens: {len(token_buffer)}")
+                        # Debug: print RAW messages
+                        if messages:
+                            print(f"[STREAM] Messages in chunk: {len(messages)}")
+                            for idx, msg in enumerate(messages):
+                                msg_type = type(msg).__name__
+                                print(f"[STREAM]   Message {idx}: type={msg_type}")
+                                if hasattr(msg, 'content'):
+                                    raw_content = msg.content
+                                    content_type = type(raw_content).__name__
+                                    if isinstance(raw_content, str):
+                                        preview = raw_content[:200]
+                                    elif isinstance(raw_content, list):
+                                        preview = f"LIST with {len(raw_content)} items"
+                                    else:
+                                        preview = str(raw_content)[:200]
+                                    print(f"[STREAM]     Raw content type: {content_type}")
+                                    print(f"[STREAM]     Raw content preview: {preview}")
+                    elif isinstance(chunk, dict):
+                        # Format: {state}
+                        print(f"[STREAM] Chunk keys: {list(chunk.keys())}")
+                        chunk_data = chunk
 
-                        # Send complete message
-                        full_text = "".join(token_buffer)
-                        complete_event = {
-                            "event": "values",
-                            "data": {
-                                "messages": [{
-                                    "type": "ai",
-                                    "content": [{"type": "text", "text": full_text}],
-                                    "id": f"complete-{event_count}"
-                                }]
-                            }
-                        }
-                        yield f"data: {json.dumps(complete_event, ensure_ascii=False)}\n\n"
-                        token_buffer = []
+                        # Debug: print RAW messages BEFORE serialization
+                        if "messages" in chunk_data:
+                            print(f"[STREAM] Messages in chunk: {len(chunk_data['messages'])}")
+                            for idx, msg in enumerate(chunk_data['messages']):
+                                msg_type = type(msg).__name__
+                                print(f"[STREAM]   Message {idx}: type={msg_type}")
+                                if hasattr(msg, 'content'):
+                                    raw_content = msg.content
+                                    content_type = type(raw_content).__name__
+                                    if isinstance(raw_content, str):
+                                        preview = raw_content[:200]
+                                    elif isinstance(raw_content, list):
+                                        preview = f"LIST with {len(raw_content)} items"
+                                    else:
+                                        preview = str(raw_content)[:200]
+                                    print(f"[STREAM]     Raw content type: {content_type}")
+                                    print(f"[STREAM]     Raw content preview: {preview}")
+                    else:
+                        print(f"[STREAM WARNING] Unexpected chunk type: {type(chunk)}")
+                        continue
 
-                    # Handle tool calls and other node updates
-                    elif event_type == "on_chain_end" and event_name:
-                        result_data = event.get("data", {})
-                        output = result_data.get("output", {})
+                    # Serialize chunk to JSON-serializable format
+                    serialized_chunk = serialize_chunk(chunk_data)
 
-                        # Send node completion event
-                        if output:
-                            serialized_output = serialize_chunk(output)
-                            node_event = {
-                                "event": "values",
-                                "data": serialized_output
-                            }
-                            yield f"data: {json.dumps(node_event, ensure_ascii=False)}\n\n"
+                    # Debug: print SERIALIZED messages
+                    if "messages" in serialized_chunk:
+                        messages_data = serialized_chunk['messages']
+                        if isinstance(messages_data, list):
+                            print(f"[STREAM] Serialized messages: {len(messages_data)}")
+                            for idx, msg in enumerate(messages_data):
+                                if isinstance(msg, dict):
+                                    content = msg.get('content', 'NO_CONTENT')
+                                    content_preview = str(content)[:200] if content else 'EMPTY'
+                                    print(f"[STREAM]   Serialized msg {idx}: content={content_preview}")
+                                else:
+                                    print(f"[STREAM]   Serialized msg {idx}: type={type(msg).__name__}, value={str(msg)[:100]}")
+                        else:
+                            print(f"[STREAM] Serialized messages is not a list: {type(messages_data).__name__}")
 
-                print(f"[STREAM] Stream completed with {event_count} events")
+                    # Send as stream_mode event (SDK understands this)
+                    stream_event = {
+                        "event": stream_mode,
+                        "data": serialized_chunk
+                    }
+
+                    try:
+                        event_json = json.dumps(stream_event, ensure_ascii=False)
+                        print(f"[STREAM] Event JSON preview: {event_json[:300]}...")
+                        yield f"data: {event_json}\n\n"
+                    except (TypeError, ValueError) as json_error:
+                        print(f"[STREAM] JSON serialization error: {json_error}")
+                        # Try with ensure_ascii=True as fallback
+                        try:
+                            event_json = json.dumps(stream_event, ensure_ascii=True)
+                            yield f"data: {event_json}\n\n"
+                        except Exception as fallback_error:
+                            print(f"[STREAM] Fallback JSON serialization also failed: {fallback_error}")
+                            # Skip this chunk and continue
+                            continue
+
+                print(f"[STREAM] Stream completed with {chunk_count} chunks")
 
                 # Send end event
-                end_event = {"event": "end"}
+                end_event = {
+                    "event": "end"
+                }
                 yield f"data: {json.dumps(end_event)}\n\n"
 
             except asyncio.CancelledError:
-                print(f"[STREAM] Client disconnected (CancelledError) after {event_count} events")
+                print(f"[STREAM] Client disconnected (CancelledError) after {chunk_count} chunks")
+                # Clean exit - client already disconnected
                 return
             except GeneratorExit:
-                print(f"[STREAM] Client disconnected (GeneratorExit) after {event_count} events")
+                print(f"[STREAM] Client disconnected (GeneratorExit) after {chunk_count} chunks")
+                # Clean exit - client already disconnected
                 return
             except Exception as e:
-                print(f"[STREAM ERROR] {type(e).__name__}: {e}")
+                print(f"[STREAM ERROR] {e}")
                 import traceback
                 traceback.print_exc()
                 error_event = {
@@ -659,6 +729,8 @@ async def create_run_stream(thread_id: str, request: Request):
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",  # Disable Nginx buffering for streaming
+                "X-Content-Type-Options": "nosniff",
+                "Access-Control-Allow-Origin": "*",
             }
         )
 
