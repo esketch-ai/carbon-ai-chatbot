@@ -549,7 +549,7 @@ async def create_run_stream(thread_id: str, request: Request):
             "messages": [HumanMessage(content=user_message)]
         }
 
-        print(f"[STREAM] Starting token-level streaming with astream_events...")
+        print(f"[STREAM] Starting token-level streaming...")
 
         # Token-level streaming using astream_events
         async def generate():
@@ -559,8 +559,8 @@ async def create_run_stream(thread_id: str, request: Request):
             token_buffer = []
 
             try:
-                # Use astream_events for token-level streaming
-                # This captures events as they happen, including individual tokens
+                # Try astream_events for token-level streaming first
+                print(f"[STREAM] Using astream_events for token-level streaming")
                 async for event in graph.astream_events(
                     graph_input,
                     config=graph_config,
@@ -638,6 +638,9 @@ async def create_run_stream(thread_id: str, request: Request):
 
             except asyncio.CancelledError:
                 print(f"[STREAM] Client disconnected (CancelledError) after {event_count} events")
+                return
+            except GeneratorExit:
+                print(f"[STREAM] Client disconnected (GeneratorExit) after {event_count} events")
                 return
             except Exception as e:
                 print(f"[STREAM ERROR] {type(e).__name__}: {e}")
