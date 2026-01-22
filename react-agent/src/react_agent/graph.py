@@ -218,10 +218,16 @@ async def call_model(
         ) # ainvoke는 모델을 비동기적으로 호출하고 그 결과를 반환받는 함수
     except asyncio.CancelledError:
         print(f"[CALL_MODEL] Client disconnected during model invocation")
-        raise  # Re-raise to properly cleanup
+        # Return a partial response instead of raising to avoid polluting logs
+        return {
+            "messages": [AIMessage(content="응답이 취소되었습니다. 다시 시도해주세요.")]
+        }
     except Exception as e:
         print(f"[CALL_MODEL ERROR] {type(e).__name__}: {e}")
-        raise
+        # Return error message instead of raising
+        return {
+            "messages": [AIMessage(content=f"오류가 발생했습니다: {str(e)[:100]}")]
+        }
 
     # Handle the case when it's the last step and the model still wants to use a tool
     # 툴을 사용해야 한다고 판단할 경우

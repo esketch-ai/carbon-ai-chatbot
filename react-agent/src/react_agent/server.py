@@ -613,9 +613,20 @@ async def create_run_stream(thread_id: str, request: Request):
                         "data": serialized_chunk
                     }
 
-                    event_json = json.dumps(stream_event, ensure_ascii=False)
-                    print(f"[STREAM] Event JSON preview: {event_json[:300]}...")
-                    yield f"data: {event_json}\n\n"
+                    try:
+                        event_json = json.dumps(stream_event, ensure_ascii=False)
+                        print(f"[STREAM] Event JSON preview: {event_json[:300]}...")
+                        yield f"data: {event_json}\n\n"
+                    except (TypeError, ValueError) as json_error:
+                        print(f"[STREAM] JSON serialization error: {json_error}")
+                        # Try with ensure_ascii=True as fallback
+                        try:
+                            event_json = json.dumps(stream_event, ensure_ascii=True)
+                            yield f"data: {event_json}\n\n"
+                        except Exception as fallback_error:
+                            print(f"[STREAM] Fallback JSON serialization also failed: {fallback_error}")
+                            # Skip this chunk and continue
+                            continue
 
                 print(f"[STREAM] Stream completed with {chunk_count} chunks")
 
@@ -625,10 +636,13 @@ async def create_run_stream(thread_id: str, request: Request):
                 }
                 yield f"data: {json.dumps(end_event)}\n\n"
 
-            except (asyncio.CancelledError, GeneratorExit):
-                print(f"[STREAM] Client disconnected after {chunk_count} chunks")
-                # Don't yield error event - client already disconnected
-                # Clean exit - no need to re-raise
+            except asyncio.CancelledError:
+                print(f"[STREAM] Client disconnected (CancelledError) after {chunk_count} chunks")
+                # Clean exit - client already disconnected
+                return
+            except GeneratorExit:
+                print(f"[STREAM] Client disconnected (GeneratorExit) after {chunk_count} chunks")
+                # Clean exit - client already disconnected
                 return
             except Exception as e:
                 print(f"[STREAM ERROR] {e}")
@@ -647,6 +661,8 @@ async def create_run_stream(thread_id: str, request: Request):
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",  # Disable Nginx buffering for streaming
+                "X-Content-Type-Options": "nosniff",
+                "Access-Control-Allow-Origin": "*",
             }
         )
 
