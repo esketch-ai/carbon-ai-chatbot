@@ -227,6 +227,7 @@ async def stream_agent(request: ChatRequest):
 
         async def generate():
             """Generate streaming response."""
+            import asyncio
             try:
                 async for chunk in graph.astream(input_data, config=config):
                     # Extract message content from chunk
@@ -237,6 +238,10 @@ async def stream_agent(request: ChatRequest):
 
                 yield "data: [DONE]\n\n"
 
+            except (GeneratorExit, asyncio.CancelledError):
+                print(f"[STREAM] Client disconnected in stream_agent")
+                # Clean exit - client already disconnected
+                return
             except Exception as e:
                 yield f"data: Error: {str(e)}\n\n"
 
@@ -442,6 +447,7 @@ async def create_run(thread_id: str, request: Request):
             # Streaming response
             async def generate():
                 """Generate streaming response in LangGraph Cloud format."""
+                import asyncio
                 try:
                     async for chunk in graph.astream(
                         graph_input,
@@ -463,6 +469,10 @@ async def create_run(thread_id: str, request: Request):
                     }
                     yield f"data: {json.dumps(end_event)}\n\n"
 
+                except (GeneratorExit, asyncio.CancelledError):
+                    print(f"[STREAM] Client disconnected in create_run")
+                    # Clean exit - client already disconnected
+                    return
                 except Exception as e:
                     error_event = {
                         "event": "error",
@@ -615,10 +625,11 @@ async def create_run_stream(thread_id: str, request: Request):
                 }
                 yield f"data: {json.dumps(end_event)}\n\n"
 
-            except asyncio.CancelledError:
-                print(f"[STREAM] Client disconnected (CancelledError) after {chunk_count} chunks")
+            except (asyncio.CancelledError, GeneratorExit):
+                print(f"[STREAM] Client disconnected after {chunk_count} chunks")
                 # Don't yield error event - client already disconnected
-                raise  # Re-raise to properly cleanup
+                # Clean exit - no need to re-raise
+                return
             except Exception as e:
                 print(f"[STREAM ERROR] {e}")
                 import traceback
