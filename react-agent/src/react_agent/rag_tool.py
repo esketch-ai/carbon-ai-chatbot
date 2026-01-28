@@ -511,45 +511,62 @@ class RAGTool:
             keyword_query = self._extract_keywords_from_query(query)
             logger.info(f"[검색] 원본 쿼리: '{query}' -> 키워드: '{keyword_query}'")
 
+            # 지식베이스 문서 수 확인
+            try:
+                total_docs = self.vectorstore._collection.count()
+                logger.info(f"📚 지식베이스: 총 {total_docs}개 문서 청크")
+            except:
+                logger.warning("⚠️ 지식베이스 문서 수 확인 실패")
+
             # 키워드와 원본 쿼리 모두로 검색하여 더 많은 결과 확보
             # 키워드가 원본과 다르면 두 번 검색, 같으면 한 번만 검색
             all_docs_with_scores = []
             seen_doc_ids = set()
             original_docs_count = 0
-            
+
             # 1. 키워드로 검색
             keyword_docs = self.vectorstore.similarity_search_with_score(keyword_query, k=k * 3)
+            logger.info(f"🔍 키워드 '{keyword_query}' 검색: {len(keyword_docs)}개 결과")
+
             for doc, score in keyword_docs:
                 doc_id = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
                 if doc_id not in seen_doc_ids:
                     all_docs_with_scores.append((doc, score))
                     seen_doc_ids.add(doc_id)
-            
+
             # 2. 원본 쿼리로도 검색 (키워드와 다를 경우)
             if keyword_query.lower() != query.lower():
                 original_docs = self.vectorstore.similarity_search_with_score(query, k=k * 3)
                 original_docs_count = len(original_docs)
+                logger.info(f"🔍 원본 '{query}' 검색: {len(original_docs)}개 결과")
                 for doc, score in original_docs:
                     doc_id = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
                     if doc_id not in seen_doc_ids:
                         all_docs_with_scores.append((doc, score))
                         seen_doc_ids.add(doc_id)
-            
+
             # 유사도 점수로 정렬 (거리가 작을수록 유사도 높음)
             all_docs_with_scores.sort(key=lambda x: x[1])
-            docs_with_scores = all_docs_with_scores[:k * 3]  # 상위 k*5개만 사용
-            
-            logger.info(f"[검색] 총 {len(docs_with_scores)}개 후보 문서 검색됨 (키워드: {len(keyword_docs)}개, 원본: {original_docs_count}개)")
+            docs_with_scores = all_docs_with_scores[:k * 3]  # 상위 k*3개만 사용
+
+            # 상위 5개 결과의 실제 점수 출력 (임계값 필터링 전)
+            logger.info(f"📊 상위 {min(5, len(docs_with_scores))}개 문서 (필터링 전):")
+            for idx, (doc, distance) in enumerate(docs_with_scores[:5]):
+                similarity = 1.0 - distance if distance <= 2.0 else max(0.0, 1.0 - (distance / 2.0))
+                filename = doc.metadata.get('filename', 'unknown')
+                preview = doc.page_content[:50].replace('\n', ' ')
+                logger.info(f"  #{idx+1}: {filename} (거리: {distance:.4f}, 유사도: {similarity:.4f}) - {preview}...")
 
             filtered_docs = []
             seen_keys = set()  # 중복 제거용 (source + chunk_index 조합)
+            rejected_count = 0
 
             for idx, (doc, distance) in enumerate(docs_with_scores):
                 # Chroma DB의 distance 처리
                 # Chroma는 L2 거리 또는 코사인 거리를 사용할 수 있음
                 # 정규화된 벡터의 경우 코사인 거리: 0 ~ 2 (값이 작을수록 유사)
                 # 코사인 유사도 = 1 - 코사인 거리
-                
+
                 # distance가 음수이거나 2보다 크면 이상한 값이므로 처리
                 if distance < 0:
                     similarity = 1.0  # 완전 일치로 간주
@@ -558,15 +575,9 @@ class RAGTool:
                 else:
                     similarity = 1.0 - distance
 
-                # 디버깅: 상위 5개 결과의 유사도 로깅
-                if idx < 3:
-                    filename = doc.metadata.get('filename', 'unknown')
-                    logger.info(f"[검색] #{idx+1} - 파일: {filename}, 거리: {distance:.4f}, 유사도: {similarity:.4f}")
-
                 # 유사도 임계값 확인
                 if similarity < similarity_threshold:
-                    if idx < 3:  # 상위 3개만 로깅
-                        logger.debug(f"[검색] 유사도 {similarity:.4f} < 임계값 {similarity_threshold}, 제외")
+                    rejected_count += 1
                     continue
                 
                 # 중복 제거: 같은 source와 chunk_index 조합은 제외
@@ -592,14 +603,18 @@ class RAGTool:
                     break
 
             if not filtered_docs:
-                logger.warning(f"[검색] 검색 완료: '{query}' (키워드: '{keyword_query}') -> 유사도 {similarity_threshold} 이상인 문서 없음")
-                logger.warning(f"[검색] 상위 결과들의 유사도가 모두 임계값 미만입니다. 임계값을 낮추거나 키워드 추출 방식을 확인하세요.")
+                logger.warning(
+                    f"❌ 임계값 {similarity_threshold} 미만: "
+                    f"{len(docs_with_scores)}개 결과 모두 제외됨"
+                )
                 # 빈 결과도 캐싱 (불필요한 재검색 방지, TTL은 짧게)
                 cache_manager.set("rag", cache_content, [], ttl=3600)  # 1시간
                 return []
 
+            logger.info(f"✅ 필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
+
             # 임계값을 넘긴 문서들의 유사도 로깅
-            logger.info(f"[검색] ✓ 검색 완료: '{query}' -> {len(filtered_docs)}개 문서 (임계값 {similarity_threshold} 이상)")
+            logger.info(f"📚 최종 결과:")
             for idx, doc in enumerate(filtered_docs[:5]):  # 상위 5개만 출력
                 logger.info(f"  #{idx+1}: {doc['filename']} (유사도: {doc['similarity']:.3f})")
 
@@ -648,11 +663,18 @@ class RAGTool:
             return cached_result
 
         try:
+            # 지식베이스 문서 수 확인
+            try:
+                total_docs = self.vectorstore._collection.count()
+                logger.info(f"📚 지식베이스: 총 {total_docs}개 문서 청크")
+            except:
+                logger.warning("⚠️ 지식베이스 문서 수 확인 실패")
+
             # 1. 벡터 검색
             vector_results = {}
             if self.vectorstore is not None:
-                logger.info(f"[하이브리드] 벡터 검색 시작...")
                 vector_docs = self.vectorstore.similarity_search_with_score(query, k=k * 3)
+                logger.info(f"🔍 벡터 검색: {len(vector_docs)}개 결과")
                 for doc, distance in vector_docs:
                     doc_key = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
                     # 거리를 유사도로 변환 (0~1 범위)
@@ -661,12 +683,10 @@ class RAGTool:
                         'doc': doc,
                         'score': similarity
                     }
-                logger.info(f"[하이브리드] 벡터 검색 완료: {len(vector_results)}개")
 
             # 2. BM25 검색
             bm25_results = {}
             if self.bm25_index is not None and len(self._bm25_documents) > 0:
-                logger.info(f"[하이브리드] BM25 검색 시작...")
                 # 쿼리 토크나이징
                 tokenized_query = self._tokenize(query)
                 # BM25 점수 계산
@@ -678,6 +698,7 @@ class RAGTool:
 
                 # 상위 k*3개만 선택
                 top_indices = np.argsort(normalized_scores)[::-1][:k * 3]
+                logger.info(f"🔍 BM25 검색: {len(top_indices)}개 결과")
 
                 for idx in top_indices:
                     doc = self._bm25_documents[idx]
@@ -686,7 +707,6 @@ class RAGTool:
                         'doc': doc,
                         'score': normalized_scores[idx]
                     }
-                logger.info(f"[하이브리드] BM25 검색 완료: {len(bm25_results)}개")
 
             # 3. 점수 결합 (alpha 가중치)
             combined_results = {}
@@ -717,13 +737,28 @@ class RAGTool:
                 reverse=True
             )
 
+            # 상위 5개 결과의 실제 점수 출력 (임계값 필터링 전)
+            logger.info(f"📊 상위 {min(5, len(sorted_results))}개 문서 (필터링 전):")
+            for idx, (doc_key, result) in enumerate(sorted_results[:5]):
+                doc = result['doc']
+                filename = doc.metadata.get('filename', 'unknown')
+                preview = doc.page_content[:50].replace('\n', ' ')
+                logger.info(
+                    f"  #{idx+1}: {filename} "
+                    f"(hybrid: {result['hybrid_score']:.3f} = "
+                    f"vector: {result['vector_score']:.3f} + bm25: {result['bm25_score']:.3f}) "
+                    f"- {preview}..."
+                )
+
             # 5. 필터링 및 결과 생성
             filtered_docs = []
+            rejected_count = 0
             for idx, (doc_key, result) in enumerate(sorted_results):
                 hybrid_score = result['hybrid_score']
 
                 # 임계값 확인
                 if hybrid_score < similarity_threshold:
+                    rejected_count += 1
                     continue
 
                 doc = result['doc']
@@ -742,15 +777,17 @@ class RAGTool:
                     break
 
             if not filtered_docs:
-                logger.warning(f"[하이브리드] 검색 완료: '{query}' -> 유사도 {similarity_threshold} 이상인 문서 없음")
+                logger.warning(
+                    f"❌ 임계값 {similarity_threshold} 미만: "
+                    f"{len(sorted_results)}개 결과 모두 제외됨"
+                )
                 cache_manager.set("rag", cache_content, [], ttl=3600)
                 return []
 
-            # 임계값을 넘긴 문서들의 점수 로깅
-            logger.info(
-                f"[하이브리드] ✓ 검색 완료: '{query}' -> {len(filtered_docs)}개 문서 "
-                f"(alpha={alpha}, 임계값 {similarity_threshold} 이상)"
-            )
+            logger.info(f"✅ 필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
+
+            # 최종 결과 로깅
+            logger.info(f"📚 최종 결과 (하이브리드, alpha={alpha}):")
             for idx, doc in enumerate(filtered_docs[:5]):  # 상위 5개만 출력
                 logger.info(
                     f"  #{idx+1}: {doc['filename']} "
