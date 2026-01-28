@@ -481,14 +481,14 @@ class RAGTool:
             logger.warning(f"키워드 추출 실패 (원본 사용): {e}")
             return query
 
-    def search_documents(self, query: str, k: int = 3, similarity_threshold: float = 0.6) -> List[Dict[str, Any]]:
+    def search_documents(self, query: str, k: int = 3, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
         """
         문서 검색 (키워드 추출 + 코사인 유사도 기반)
 
         Args:
             query: 검색 쿼리
             k: 반환할 문서 수
-            similarity_threshold: 코사인 유사도 임계값 (기본값: 0.6)
+            similarity_threshold: 코사인 유사도 임계값 (기본값: 0.7, 엄격한 필터링)
 
         Returns:
             관련 문서 리스트 (딕셔너리 형태)
@@ -614,7 +614,7 @@ class RAGTool:
         query: str,
         k: int = 3,
         alpha: float = 0.5,
-        similarity_threshold: float = 0.3
+        similarity_threshold: float = 0.7
     ) -> List[Dict[str, Any]]:
         """
         하이브리드 검색 (BM25 + 벡터 검색)

@@ -21,7 +21,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from react_agent.configuration import Configuration
 from react_agent.state import InputState, State
-from react_agent.tools import TOOLS, get_all_tools, search_knowledge_base
+from react_agent.tools import TOOLS, get_all_tools, search_knowledge_base, search
 from react_agent.utils import (
     detect_and_convert_mermaid,
     analyze_conversation_context,
@@ -121,9 +121,34 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
 
 
 async def _safe_rag_search(query: str) -> Dict[str, Any]:
-    """RAG 검색을 안전하게 실행 (예외 처리 포함)"""
+    """RAG 검색을 안전하게 실행 (예외 처리 포함)
+
+    RAG에서 문서를 찾지 못하면 자동으로 웹 검색을 수행합니다.
+    """
     try:
         result = search_knowledge_base.invoke({"query": query, "k": 3, "use_hybrid": True})
+
+        # RAG에서 문서를 찾지 못한 경우 웹 검색 폴백
+        if result.get("status") == "no_results":
+            print(f"[RAG] 문서 없음 (유사도 0.7 미만), 웹 검색 시작...")
+            try:
+                web_result = await search(query)
+                if web_result:
+                    print(f"[WEB SEARCH] ✓ 웹 검색 완료")
+                    return {
+                        "status": "web_fallback",
+                        "message": f"지식베이스에서 관련 문서를 찾지 못해 웹 검색을 수행했습니다.",
+                        "rag_results": [],
+                        "web_results": web_result,
+                        "fallback_used": True
+                    }
+                else:
+                    print(f"[WEB SEARCH] 검색 결과 없음")
+                    return result
+            except Exception as web_error:
+                print(f"[WEB SEARCH ERROR] {web_error}")
+                return result
+
         return result
     except Exception as e:
         print(f"[RAG ERROR] {e}")
@@ -291,6 +316,20 @@ async def call_model(
                 context_info += "검색된 문서:\n"
                 for doc in rag_result.get("results", [])[:3]:
                     context_info += f"- {doc.get('metadata', {}).get('source', 'Unknown')}: {doc.get('page_content', '')[:200]}...\n"
+            elif rag_result.get("status") == "web_fallback":
+                # 웹 검색 폴백이 사용된 경우
+                context_info += f"\n🌐 **웹 검색 수행**: {rag_result.get('message', '')}\n"
+                web_results = rag_result.get("web_results", [])
+                if web_results:
+                    context_info += "웹 검색 결과:\n"
+                    for item in web_results[:5]:
+                        if isinstance(item, dict):
+                            title = item.get("title", "")
+                            url = item.get("url", "")
+                            content = item.get("content", "")
+                            context_info += f"- [{title}]({url})\n  {content[:200]}...\n"
+                        else:
+                            context_info += f"- {str(item)[:200]}\n"
             else:
                 context_info += f"\n📚 지식베이스: {rag_result.get('message', '검색 결과 없음')}\n"
 

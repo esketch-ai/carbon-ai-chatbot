@@ -71,13 +71,13 @@ def search_knowledge_base(query: str, k: int = 3, use_hybrid: bool = True) -> di
             query,
             k=k,
             alpha=0.5,  # 벡터 50% + BM25 50%
-            similarity_threshold=0.3  # 하이브리드는 더 낮은 임계값 사용
+            similarity_threshold=0.7  # 엄격한 필터링
         )
-        threshold_msg = "하이브리드 점수 0.3"
+        threshold_msg = "하이브리드 점수 0.7"
     else:
         # 벡터 검색 전용
-        results = rag_tool.search_documents(query, k=k, similarity_threshold=0.6)
-        threshold_msg = "유사도 0.6"
+        results = rag_tool.search_documents(query, k=k, similarity_threshold=0.7)
+        threshold_msg = "유사도 0.7"
 
     if not results:
         return {
