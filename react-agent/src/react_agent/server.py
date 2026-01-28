@@ -3,6 +3,8 @@
 import os
 import uuid
 import json
+import logging
+import asyncio
 from typing import Any, Dict, Optional, List
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,9 +16,13 @@ from dotenv import load_dotenv
 from react_agent.graph import graph   # 기존 langgraph 그래프 임포트
 from react_agent.configuration import Configuration  # 기존 설정 클래스
 from langchain_core.messages import AIMessage, HumanMessage   # 랭체인 메세지 타입 임포트
+from react_agent.rag_tool import get_rag_tool  # RAG 도구
+from react_agent.tools import _get_mcp_client, get_all_tools  # MCP 클라이언트 및 도구
 
 # Load environment variables
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 # Helper function to convert LangChain messages to JSON-serializable format
@@ -107,6 +113,70 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Startup event: Pre-load heavy resources
+@app.on_event("startup")
+async def startup_event():
+    """서버 시작 시 무거운 리소스들을 미리 로드하여 첫 요청 지연 감소"""
+    logger.info("=" * 60)
+    logger.info("🚀 서버 시작: 리소스 사전 로드 시작")
+    logger.info("=" * 60)
+
+    startup_tasks = []
+
+    # 1. RAG 도구 초기화 (임베딩 모델 로드)
+    async def init_rag():
+        try:
+            logger.info("[STARTUP] RAG 도구 초기화 중...")
+            rag_tool = get_rag_tool()
+            if rag_tool.available:
+                # Warmup: 더미 검색으로 임베딩 모델 준비
+                logger.info("[STARTUP] 임베딩 모델 워밍업 중...")
+                _ = rag_tool.search_documents("test warmup", k=1)
+                logger.info("[STARTUP] ✓ RAG 도구 준비 완료")
+            else:
+                logger.warning("[STARTUP] ⚠️ RAG 도구 사용 불가 (지식베이스 없음)")
+        except Exception as e:
+            logger.error(f"[STARTUP] ✗ RAG 도구 초기화 실패: {e}")
+
+    startup_tasks.append(init_rag())
+
+    # 2. MCP 클라이언트 초기화 (NET-Z 연결)
+    async def init_mcp():
+        try:
+            netz_enabled = os.getenv("NETZ_MCP_ENABLED", "false").lower() == "true"
+            if netz_enabled:
+                logger.info("[STARTUP] MCP 클라이언트 초기화 중...")
+                mcp_client = await _get_mcp_client()
+                if mcp_client:
+                    logger.info("[STARTUP] ✓ MCP 클라이언트 연결 완료")
+                else:
+                    logger.warning("[STARTUP] ⚠️ MCP 클라이언트 연결 실패")
+            else:
+                logger.info("[STARTUP] MCP 비활성화 (NETZ_MCP_ENABLED=false)")
+        except Exception as e:
+            logger.error(f"[STARTUP] ✗ MCP 클라이언트 초기화 실패: {e}")
+
+    startup_tasks.append(init_mcp())
+
+    # 3. 도구 목록 로드 (MCP 도구 포함)
+    async def init_tools():
+        try:
+            logger.info("[STARTUP] 도구 목록 로드 중...")
+            tools = await get_all_tools()
+            logger.info(f"[STARTUP] ✓ {len(tools)}개 도구 로드 완료")
+        except Exception as e:
+            logger.error(f"[STARTUP] ✗ 도구 로드 실패: {e}")
+
+    startup_tasks.append(init_tools())
+
+    # 병렬 실행
+    await asyncio.gather(*startup_tasks, return_exceptions=True)
+
+    logger.info("=" * 60)
+    logger.info("✅ 서버 준비 완료 - 첫 요청 지연 최소화됨")
+    logger.info("=" * 60)
 
 
 # Request/Response models
