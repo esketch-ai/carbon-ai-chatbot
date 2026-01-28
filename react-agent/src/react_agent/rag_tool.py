@@ -598,7 +598,10 @@ class RAGTool:
                 cache_manager.set("rag", cache_content, [], ttl=3600)  # 1시간
                 return []
 
-            logger.info(f"[검색] 검색 완료: '{query}' -> {len(filtered_docs)}개 문서 (유사도 {similarity_threshold} 이상)")
+            # 임계값을 넘긴 문서들의 유사도 로깅
+            logger.info(f"[검색] ✓ 검색 완료: '{query}' -> {len(filtered_docs)}개 문서 (임계값 {similarity_threshold} 이상)")
+            for idx, doc in enumerate(filtered_docs[:5]):  # 상위 5개만 출력
+                logger.info(f"  #{idx+1}: {doc['filename']} (유사도: {doc['similarity']:.3f})")
 
             # 검색 결과 캐싱 (24시간)
             cache_manager.set("rag", cache_content, filtered_docs)
@@ -734,14 +737,6 @@ class RAGTool:
                     'bm25_score': result['bm25_score']
                 })
 
-                # 상위 3개는 상세 로깅
-                if idx < 3:
-                    logger.info(
-                        f"[하이브리드] #{idx+1} - {doc.metadata.get('filename', 'unknown')}: "
-                        f"hybrid={hybrid_score:.4f} (vector={result['vector_score']:.4f}, "
-                        f"bm25={result['bm25_score']:.4f})"
-                    )
-
                 # 최대 k개까지
                 if len(filtered_docs) >= k:
                     break
@@ -751,10 +746,16 @@ class RAGTool:
                 cache_manager.set("rag", cache_content, [], ttl=3600)
                 return []
 
+            # 임계값을 넘긴 문서들의 점수 로깅
             logger.info(
-                f"[하이브리드] 검색 완료: '{query}' -> {len(filtered_docs)}개 문서 "
-                f"(alpha={alpha}, threshold={similarity_threshold})"
+                f"[하이브리드] ✓ 검색 완료: '{query}' -> {len(filtered_docs)}개 문서 "
+                f"(alpha={alpha}, 임계값 {similarity_threshold} 이상)"
             )
+            for idx, doc in enumerate(filtered_docs[:5]):  # 상위 5개만 출력
+                logger.info(
+                    f"  #{idx+1}: {doc['filename']} "
+                    f"(hybrid: {doc['similarity']:.3f} = vector: {doc['vector_score']:.3f} + bm25: {doc['bm25_score']:.3f})"
+                )
 
             # 검색 결과 캐싱
             cache_manager.set("rag", cache_content, filtered_docs)
