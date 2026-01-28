@@ -430,8 +430,6 @@ class SSEMCPClient:
                                         logger.warning(
                                             f"[SSE] 세션 ID 변경: {old_session} → {self.session_id}"
                                         )
-                                else:
-                                    logger.warning(f"[SSE] ⚠️ endpoint 이벤트에 sessionId 없음: {data_str}")
 
                                         # 🔥 세션이 변경되었으므로 이전 세션의 pong 큐 비우기
                                         if not self.pong_queue.empty():
@@ -459,6 +457,8 @@ class SSEMCPClient:
                                             self.pending_requests.clear()
                                     else:
                                         logger.info(f"[SSE] 세션 ID: {self.session_id}")
+                                else:
+                                    logger.warning(f"[SSE] ⚠️ endpoint 이벤트에 sessionId 없음: {data_str}")
                                 continue
 
                             # message 이벤트: JSON-RPC 메시지 처리
