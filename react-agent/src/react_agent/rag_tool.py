@@ -481,14 +481,14 @@ class RAGTool:
             logger.warning(f"키워드 추출 실패 (원본 사용): {e}")
             return query
 
-    def search_documents(self, query: str, k: int = 3, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
+    def search_documents(self, query: str, k: int = 3, similarity_threshold: float = 0.5) -> List[Dict[str, Any]]:
         """
         문서 검색 (키워드 추출 + 코사인 유사도 기반)
 
         Args:
             query: 검색 쿼리
             k: 반환할 문서 수
-            similarity_threshold: 코사인 유사도 임계값 (기본값: 0.7, 엄격한 필터링)
+            similarity_threshold: 코사인 유사도 임계값 (기본값: 0.5, 한국어 모델에 적합)
 
         Returns:
             관련 문서 리스트 (딕셔너리 형태)
@@ -514,9 +514,9 @@ class RAGTool:
             # 지식베이스 문서 수 확인
             try:
                 total_docs = self.vectorstore._collection.count()
-                logger.info(f"📚 지식베이스: 총 {total_docs}개 문서 청크")
+                print(f"📚 지식베이스: 총 {total_docs}개 문서 청크")
             except:
-                logger.warning("⚠️ 지식베이스 문서 수 확인 실패")
+                print("⚠️ 지식베이스 문서 수 확인 실패")
 
             # 키워드와 원본 쿼리 모두로 검색하여 더 많은 결과 확보
             # 키워드가 원본과 다르면 두 번 검색, 같으면 한 번만 검색
@@ -526,7 +526,7 @@ class RAGTool:
 
             # 1. 키워드로 검색
             keyword_docs = self.vectorstore.similarity_search_with_score(keyword_query, k=k * 3)
-            logger.info(f"🔍 키워드 '{keyword_query}' 검색: {len(keyword_docs)}개 결과")
+            print(f"🔍 키워드 '{keyword_query}' 검색: {len(keyword_docs)}개 결과")
 
             for doc, score in keyword_docs:
                 doc_id = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
@@ -538,7 +538,7 @@ class RAGTool:
             if keyword_query.lower() != query.lower():
                 original_docs = self.vectorstore.similarity_search_with_score(query, k=k * 3)
                 original_docs_count = len(original_docs)
-                logger.info(f"🔍 원본 '{query}' 검색: {len(original_docs)}개 결과")
+                print(f"🔍 원본 '{query}' 검색: {len(original_docs)}개 결과")
                 for doc, score in original_docs:
                     doc_id = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
                     if doc_id not in seen_doc_ids:
@@ -550,12 +550,12 @@ class RAGTool:
             docs_with_scores = all_docs_with_scores[:k * 3]  # 상위 k*3개만 사용
 
             # 상위 5개 결과의 실제 점수 출력 (임계값 필터링 전)
-            logger.info(f"📊 상위 {min(5, len(docs_with_scores))}개 문서 (필터링 전):")
+            print(f"📊 상위 {min(5, len(docs_with_scores))}개 문서 (필터링 전):")
             for idx, (doc, distance) in enumerate(docs_with_scores[:5]):
                 similarity = 1.0 - distance if distance <= 2.0 else max(0.0, 1.0 - (distance / 2.0))
                 filename = doc.metadata.get('filename', 'unknown')
                 preview = doc.page_content[:50].replace('\n', ' ')
-                logger.info(f"  #{idx+1}: {filename} (거리: {distance:.4f}, 유사도: {similarity:.4f}) - {preview}...")
+                print(f"  #{idx+1}: {filename} (거리: {distance:.4f}, 유사도: {similarity:.4f}) - {preview}...")
 
             filtered_docs = []
             seen_keys = set()  # 중복 제거용 (source + chunk_index 조합)
@@ -611,12 +611,12 @@ class RAGTool:
                 cache_manager.set("rag", cache_content, [], ttl=3600)  # 1시간
                 return []
 
-            logger.info(f"✅ 필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
+            print(f"✅ 필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
 
             # 임계값을 넘긴 문서들의 유사도 로깅
-            logger.info(f"📚 최종 결과:")
+            print(f"📚 최종 결과:")
             for idx, doc in enumerate(filtered_docs[:5]):  # 상위 5개만 출력
-                logger.info(f"  #{idx+1}: {doc['filename']} (유사도: {doc['similarity']:.3f})")
+                print(f"  #{idx+1}: {doc['filename']} (유사도: {doc['similarity']:.3f})")
 
             # 검색 결과 캐싱 (24시간)
             cache_manager.set("rag", cache_content, filtered_docs)
@@ -632,7 +632,7 @@ class RAGTool:
         query: str,
         k: int = 3,
         alpha: float = 0.5,
-        similarity_threshold: float = 0.6
+        similarity_threshold: float = 0.5
     ) -> List[Dict[str, Any]]:
         """
         하이브리드 검색 (BM25 + 벡터 검색)
@@ -666,15 +666,15 @@ class RAGTool:
             # 지식베이스 문서 수 확인
             try:
                 total_docs = self.vectorstore._collection.count()
-                logger.info(f"📚 지식베이스: 총 {total_docs}개 문서 청크")
+                print(f"📚 지식베이스: 총 {total_docs}개 문서 청크")
             except:
-                logger.warning("⚠️ 지식베이스 문서 수 확인 실패")
+                print("⚠️ 지식베이스 문서 수 확인 실패")
 
             # 1. 벡터 검색
             vector_results = {}
             if self.vectorstore is not None:
                 vector_docs = self.vectorstore.similarity_search_with_score(query, k=k * 3)
-                logger.info(f"🔍 벡터 검색: {len(vector_docs)}개 결과")
+                print(f"🔍 벡터 검색: {len(vector_docs)}개 결과")
                 for doc, distance in vector_docs:
                     doc_key = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
                     # 거리를 유사도로 변환 (0~1 범위)
@@ -698,7 +698,7 @@ class RAGTool:
 
                 # 상위 k*3개만 선택
                 top_indices = np.argsort(normalized_scores)[::-1][:k * 3]
-                logger.info(f"🔍 BM25 검색: {len(top_indices)}개 결과")
+                print(f"🔍 BM25 검색: {len(top_indices)}개 결과")
 
                 for idx in top_indices:
                     doc = self._bm25_documents[idx]
@@ -738,12 +738,12 @@ class RAGTool:
             )
 
             # 상위 5개 결과의 실제 점수 출력 (임계값 필터링 전)
-            logger.info(f"📊 상위 {min(5, len(sorted_results))}개 문서 (필터링 전):")
+            print(f"📊 상위 {min(5, len(sorted_results))}개 문서 (필터링 전):")
             for idx, (doc_key, result) in enumerate(sorted_results[:5]):
                 doc = result['doc']
                 filename = doc.metadata.get('filename', 'unknown')
                 preview = doc.page_content[:50].replace('\n', ' ')
-                logger.info(
+                print(
                     f"  #{idx+1}: {filename} "
                     f"(hybrid: {result['hybrid_score']:.3f} = "
                     f"vector: {result['vector_score']:.3f} + bm25: {result['bm25_score']:.3f}) "
@@ -784,12 +784,12 @@ class RAGTool:
                 cache_manager.set("rag", cache_content, [], ttl=3600)
                 return []
 
-            logger.info(f"✅ 필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
+            print(f"✅ 필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
 
             # 최종 결과 로깅
-            logger.info(f"📚 최종 결과 (하이브리드, alpha={alpha}):")
+            print(f"📚 최종 결과 (하이브리드, alpha={alpha}):")
             for idx, doc in enumerate(filtered_docs[:5]):  # 상위 5개만 출력
-                logger.info(
+                print(
                     f"  #{idx+1}: {doc['filename']} "
                     f"(hybrid: {doc['similarity']:.3f} = vector: {doc['vector_score']:.3f} + bm25: {doc['bm25_score']:.3f})"
                 )
