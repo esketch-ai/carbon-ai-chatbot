@@ -130,7 +130,7 @@ async def _safe_rag_search(query: str) -> Dict[str, Any]:
 
         # RAG에서 문서를 찾지 못한 경우 웹 검색 폴백
         if result.get("status") == "no_results":
-            print(f"[RAG] 문서 없음 (유사도 0.7 미만), 웹 검색 시작...")
+            print(f"[RAG] 문서 없음 (임계값 미달), 웹 검색 시작...")
             try:
                 web_result = await search(query)
                 if web_result:

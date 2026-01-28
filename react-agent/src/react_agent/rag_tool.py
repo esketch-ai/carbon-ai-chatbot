@@ -614,7 +614,7 @@ class RAGTool:
         query: str,
         k: int = 3,
         alpha: float = 0.5,
-        similarity_threshold: float = 0.7
+        similarity_threshold: float = 0.6
     ) -> List[Dict[str, Any]]:
         """
         하이브리드 검색 (BM25 + 벡터 검색)
