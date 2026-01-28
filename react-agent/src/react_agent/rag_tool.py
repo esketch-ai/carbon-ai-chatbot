@@ -508,7 +508,7 @@ class RAGTool:
 
         try:
             # 쿼리에서 키워드 추출
-            keyword_query = self._extract_keywords(query)
+            keyword_query = self._extract_keywords_from_query(query)
             logger.info(f"[검색] 원본 쿼리: '{query}' -> 키워드: '{keyword_query}'")
 
             # 키워드와 원본 쿼리 모두로 검색하여 더 많은 결과 확보

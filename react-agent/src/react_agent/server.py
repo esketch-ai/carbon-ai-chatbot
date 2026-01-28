@@ -138,7 +138,7 @@ async def startup_event():
             else:
                 logger.warning("[STARTUP] ⚠️ RAG 도구 사용 불가 (지식베이스 없음)")
         except Exception as e:
-            logger.error(f"[STARTUP] ✗ RAG 도구 초기화 실패: {e}")
+            logger.warning(f"[STARTUP] ⚠️ RAG 도구 초기화 실패: {e} (첫 요청 시 재시도됨)")
 
     startup_tasks.append(init_rag())
 
@@ -147,16 +147,20 @@ async def startup_event():
         try:
             netz_enabled = os.getenv("NETZ_MCP_ENABLED", "false").lower() == "true"
             if netz_enabled:
-                logger.info("[STARTUP] MCP 클라이언트 초기화 중...")
-                mcp_client = await _get_mcp_client()
-                if mcp_client:
-                    logger.info("[STARTUP] ✓ MCP 클라이언트 연결 완료")
-                else:
-                    logger.warning("[STARTUP] ⚠️ MCP 클라이언트 연결 실패")
+                logger.info("[STARTUP] MCP 클라이언트 초기화 시도 중 (타임아웃 5초)...")
+                try:
+                    # 타임아웃 5초로 제한
+                    mcp_client = await asyncio.wait_for(_get_mcp_client(), timeout=5.0)
+                    if mcp_client:
+                        logger.info("[STARTUP] ✓ MCP 클라이언트 연결 완료")
+                    else:
+                        logger.warning("[STARTUP] ⚠️ MCP 클라이언트 연결 실패 (첫 요청 시 재시도됨)")
+                except asyncio.TimeoutError:
+                    logger.warning("[STARTUP] ⚠️ MCP 연결 타임아웃 (5초) - 첫 요청 시 재시도됨")
             else:
                 logger.info("[STARTUP] MCP 비활성화 (NETZ_MCP_ENABLED=false)")
         except Exception as e:
-            logger.error(f"[STARTUP] ✗ MCP 클라이언트 초기화 실패: {e}")
+            logger.warning(f"[STARTUP] ⚠️ MCP 초기화 실패: {e} (첫 요청 시 재시도됨)")
 
     startup_tasks.append(init_mcp())
 
@@ -167,15 +171,21 @@ async def startup_event():
             tools = await get_all_tools()
             logger.info(f"[STARTUP] ✓ {len(tools)}개 도구 로드 완료")
         except Exception as e:
-            logger.error(f"[STARTUP] ✗ 도구 로드 실패: {e}")
+            logger.warning(f"[STARTUP] ⚠️ 도구 로드 실패: {e} (첫 요청 시 재시도됨)")
 
     startup_tasks.append(init_tools())
 
-    # 병렬 실행
-    await asyncio.gather(*startup_tasks, return_exceptions=True)
+    # 병렬 실행 (전체 타임아웃 10초)
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*startup_tasks, return_exceptions=True),
+            timeout=10.0
+        )
+    except asyncio.TimeoutError:
+        logger.warning("[STARTUP] ⚠️ 일부 초기화 작업이 타임아웃됨 (10초)")
 
     logger.info("=" * 60)
-    logger.info("✅ 서버 준비 완료 - 첫 요청 지연 최소화됨")
+    logger.info("✅ 서버 준비 완료 - 첫 요청 시 리소스가 자동 로드됨")
     logger.info("=" * 60)
 
 
