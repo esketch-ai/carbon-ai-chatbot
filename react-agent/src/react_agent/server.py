@@ -17,7 +17,6 @@ from react_agent.graph import graph   # 기존 langgraph 그래프 임포트
 from react_agent.configuration import Configuration  # 기존 설정 클래스
 from langchain_core.messages import AIMessage, HumanMessage   # 랭체인 메세지 타입 임포트
 from react_agent.rag_tool import get_rag_tool  # RAG 도구
-from react_agent.tools import _get_mcp_client, get_all_tools  # MCP 클라이언트 및 도구
 
 # Load environment variables
 load_dotenv()
@@ -115,7 +114,7 @@ app.add_middleware(
 )
 
 
-# Startup event: Pre-load heavy resources
+# Startup event: Pre-load heavy resources (RAG only, MCP loads on first use)
 @app.on_event("startup")
 async def startup_event():
     """서버 시작 시 무거운 리소스들을 미리 로드하여 첫 요청 지연 감소"""
@@ -142,38 +141,10 @@ async def startup_event():
 
     startup_tasks.append(init_rag())
 
-    # 2. MCP 클라이언트 초기화 (NET-Z 연결)
-    async def init_mcp():
-        try:
-            netz_enabled = os.getenv("NETZ_MCP_ENABLED", "false").lower() == "true"
-            if netz_enabled:
-                logger.info("[STARTUP] MCP 클라이언트 초기화 시도 중 (타임아웃 5초)...")
-                try:
-                    # 타임아웃 5초로 제한
-                    mcp_client = await asyncio.wait_for(_get_mcp_client(), timeout=5.0)
-                    if mcp_client:
-                        logger.info("[STARTUP] ✓ MCP 클라이언트 연결 완료")
-                    else:
-                        logger.warning("[STARTUP] ⚠️ MCP 클라이언트 연결 실패 (첫 요청 시 재시도됨)")
-                except asyncio.TimeoutError:
-                    logger.warning("[STARTUP] ⚠️ MCP 연결 타임아웃 (5초) - 첫 요청 시 재시도됨")
-            else:
-                logger.info("[STARTUP] MCP 비활성화 (NETZ_MCP_ENABLED=false)")
-        except Exception as e:
-            logger.warning(f"[STARTUP] ⚠️ MCP 초기화 실패: {e} (첫 요청 시 재시도됨)")
-
-    startup_tasks.append(init_mcp())
-
-    # 3. 도구 목록 로드 (MCP 도구 포함)
-    async def init_tools():
-        try:
-            logger.info("[STARTUP] 도구 목록 로드 중...")
-            tools = await get_all_tools()
-            logger.info(f"[STARTUP] ✓ {len(tools)}개 도구 로드 완료")
-        except Exception as e:
-            logger.warning(f"[STARTUP] ⚠️ 도구 로드 실패: {e} (첫 요청 시 재시도됨)")
-
-    startup_tasks.append(init_tools())
+    # MCP 클라이언트는 startup에서 초기화하지 않음
+    # 이유: SSE 연결이 느려서 startup 타임아웃 발생 및 상태 불량
+    # 대신 첫 번째 MCP 도구 호출 시 lazy하게 초기화됨 (이전 작동 방식)
+    logger.info("[STARTUP] MCP 클라이언트는 첫 사용 시 lazy 초기화됨")
 
     # 병렬 실행 (전체 타임아웃 10초)
     try:
@@ -185,7 +156,7 @@ async def startup_event():
         logger.warning("[STARTUP] ⚠️ 일부 초기화 작업이 타임아웃됨 (10초)")
 
     logger.info("=" * 60)
-    logger.info("✅ 서버 준비 완료 - 첫 요청 시 리소스가 자동 로드됨")
+    logger.info("✅ 서버 준비 완료")
     logger.info("=" * 60)
 
 
