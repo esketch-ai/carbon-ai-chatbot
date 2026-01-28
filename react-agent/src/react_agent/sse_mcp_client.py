@@ -340,10 +340,12 @@ class SSEMCPClient:
                 # SSE 연결
                 sse_url = f"{self.base_url}/mcp/sse"
                 params = {}
-                
+
                 if self.enterprise_id:
                     params['enterpriseId'] = self.enterprise_id
-                    logger.debug(f"[SSE] Enterprise ID: {self.enterprise_id}")
+                    logger.info(f"[SSE] Enterprise ID: {self.enterprise_id}")
+
+                logger.info(f"[SSE] 연결 시도: {sse_url} (params: {params})")
 
                 async with self.sse_client.stream(
                     "GET",
@@ -351,13 +353,14 @@ class SSEMCPClient:
                     params=params,
                     headers=headers
                 ) as response:
+                    logger.info(f"[SSE] 응답 상태: {response.status_code}")
                     if response.status_code != 200:
                         logger.error(
                             f"[SSE Listener] 연결 실패: {response.status_code}"
                         )
                         raise Exception(f"SSE connection failed: {response.status_code}")
 
-                    logger.info("[SSE Listener] ✅ 연결 성공")
+                    logger.info("[SSE Listener] ✅ 연결 성공, 스트림 읽기 시작...")
                     
                     # 재연결 성공 시 카운터 리셋
                     if self.reconnect_attempts > 0:
@@ -378,12 +381,17 @@ class SSEMCPClient:
                         self.last_activity = time.time()
 
                     current_event = None
+                    line_count = 0
 
                     # SSE 메시지 처리
                     async for line in self._read_sse_with_timeout(
                         response,
                         idle_timeout=self.idle_timeout
                     ):
+                        line_count += 1
+                        if line_count == 1:
+                            logger.info(f"[SSE] 첫 번째 라인 수신: {line[:100]}")
+
                         if not self.running:
                             logger.info("[SSE Listener] 종료 요청됨")
                             return
@@ -402,23 +410,28 @@ class SSEMCPClient:
                         # SSE event 필드
                         if line.startswith("event:"):
                             current_event = line[6:].strip()
-                            logger.debug(f"[SSE] Event: {current_event}")
+                            logger.info(f"[SSE] Event 수신: {current_event}")
                             continue
 
                         # SSE data 필드
                         if line.startswith("data:"):
                             data_str = line[5:].strip()
+                            logger.info(f"[SSE] Data 수신: {data_str[:100]}")
 
                             # endpoint 이벤트: 세션 ID 추출
                             if current_event == "endpoint":
+                                logger.info(f"[SSE] endpoint 이벤트 처리 중...")
                                 if "sessionId=" in data_str:
                                     old_session = self.session_id
                                     self.session_id = data_str.split("sessionId=")[1].split("&")[0]
+                                    logger.info(f"[SSE] ✅ 세션 ID 추출 성공: {self.session_id}")
 
                                     if old_session and old_session != self.session_id:
                                         logger.warning(
                                             f"[SSE] 세션 ID 변경: {old_session} → {self.session_id}"
                                         )
+                                else:
+                                    logger.warning(f"[SSE] ⚠️ endpoint 이벤트에 sessionId 없음: {data_str}")
 
                                         # 🔥 세션이 변경되었으므로 이전 세션의 pong 큐 비우기
                                         if not self.pong_queue.empty():
