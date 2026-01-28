@@ -319,10 +319,19 @@ async def call_model(
             elif rag_result.get("status") == "web_fallback":
                 # 웹 검색 폴백이 사용된 경우
                 context_info += f"\n🌐 **웹 검색 수행**: {rag_result.get('message', '')}\n"
-                web_results = rag_result.get("web_results", [])
-                if web_results:
+                web_results = rag_result.get("web_results", {})
+
+                # Tavily returns dict with "results" key containing list
+                if isinstance(web_results, dict):
+                    results_list = web_results.get("results", [])
+                elif isinstance(web_results, list):
+                    results_list = web_results
+                else:
+                    results_list = []
+
+                if results_list:
                     context_info += "웹 검색 결과:\n"
-                    for item in web_results[:5]:
+                    for item in results_list[:5]:
                         if isinstance(item, dict):
                             title = item.get("title", "")
                             url = item.get("url", "")
