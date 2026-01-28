@@ -123,13 +123,28 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
 async def _safe_rag_search(query: str) -> Dict[str, Any]:
     """RAG 검색을 안전하게 실행 (예외 처리 포함)
 
-    RAG에서 문서를 찾지 못하면 자동으로 웹 검색을 수행합니다.
+    RAG에서 문서를 찾지 못하면 웹 검색을 수행합니다.
+    단, NET-Z 관련 질문은 MCP 도구를 사용해야 하므로 웹 검색을 스킵합니다.
     """
     try:
         result = search_knowledge_base.invoke({"query": query, "k": 3, "use_hybrid": True})
 
-        # RAG에서 문서를 찾지 못한 경우 웹 검색 폴백
+        # RAG에서 문서를 찾지 못한 경우
         if result.get("status") == "no_results":
+            # NET-Z 관련 질문인지 확인
+            query_lower = query.lower()
+            is_netz_query = any(kw in query_lower for kw in [
+                'netz', 'net-z', '넷지', '넷제로',
+                '등록된 회사', '기업 목록', '배출량 데이터',
+                'enterprise', 'company list'
+            ])
+
+            if is_netz_query:
+                # NET-Z 질문은 웹 검색 스킵, LLM이 MCP 도구 사용하도록 유도
+                print(f"[RAG] NET-Z 질문 감지, 웹 검색 스킵 → LLM이 MCP 도구 사용")
+                return result
+
+            # 일반 질문은 웹 검색 폴백
             print(f"[RAG] 문서 없음 (임계값 미달), 웹 검색 시작...")
             try:
                 web_result = await search(query)
