@@ -7,8 +7,9 @@ Works with a chat model with tool calling support.
 
 import os
 import json
+import asyncio
 from datetime import UTC, datetime
-from typing import Dict, List, Literal, cast
+from typing import Dict, List, Literal, cast, Optional, Any
 
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
@@ -20,7 +21,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from react_agent.configuration import Configuration
 from react_agent.state import InputState, State
-from react_agent.tools import TOOLS, get_all_tools
+from react_agent.tools import TOOLS, get_all_tools, search_knowledge_base
 from react_agent.utils import (
     detect_and_convert_mermaid,
     analyze_conversation_context,
@@ -30,6 +31,104 @@ from react_agent.cache_manager import get_cache_manager
 
 # Ensure .env is loaded so ANTHROPIC_API_KEY is available
 load_dotenv()
+
+# ==================== 병렬 도구 호출 시스템 ====================
+
+async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str, Any]:
+    """질문을 분석하고 필요한 도구들을 병렬로 미리 실행
+
+    이 노드는 사용자 질문을 분석하여 필요한 도구들을 판단하고,
+    병렬로 실행하여 결과를 state에 저장합니다.
+    이를 통해 LLM이 여러 번 도구를 호출하는 것을 방지하고 속도를 개선합니다.
+    """
+    # 마지막 사용자 메시지 추출
+    last_human_message = None
+    for msg in reversed(state.messages):
+        if isinstance(msg, HumanMessage):
+            last_human_message = msg.content
+            break
+
+    if not last_human_message:
+        print("[PREFETCH] 사용자 메시지 없음, 스킵")
+        return {}
+
+    print(f"[PREFETCH] 질문 분석 시작: {last_human_message[:100]}...")
+
+    # FAQ 캐시 확인 먼저
+    cache_manager = get_cache_manager()
+    faq_answer = cache_manager.get_faq(last_human_message)
+    if faq_answer:
+        print(f"[PREFETCH] ✅ FAQ 캐시 히트!")
+        # FAQ 답변이 있으면 즉시 반환
+        return {
+            "messages": [AIMessage(content=faq_answer)],
+            "prefetched_context": {"source": "faq_cache"}
+        }
+
+    # 질문 유형 분석 (규칙 기반, 빠름)
+    question_lower = last_human_message.lower()
+
+    # 항상 RAG 검색은 실행 (대부분의 질문에 유용)
+    need_rag = True
+
+    # MCP 도구 필요 여부 판단
+    need_mcp_emission = any(kw in question_lower for kw in ['배출량', '배출권', '조회', '데이터', '통계'])
+    need_mcp_facility = any(kw in question_lower for kw in ['시설', '공장', 'top', '상위'])
+
+    print(f"[PREFETCH] 필요 도구: RAG={need_rag}, MCP_emission={need_mcp_emission}, MCP_facility={need_mcp_facility}")
+
+    # 병렬 실행할 작업 목록
+    tasks = []
+    task_names = []
+
+    # 1. RAG 검색 (거의 항상 필요)
+    if need_rag:
+        tasks.append(asyncio.create_task(_safe_rag_search(last_human_message)))
+        task_names.append("RAG")
+
+    # 2. MCP 도구들 (필요시)
+    # TODO: MCP 도구 병렬 호출 추가 (구체적인 도구명이 필요)
+    # if need_mcp_emission:
+    #     tasks.append(asyncio.create_task(_safe_mcp_call("get_emission_data", {...})))
+    #     task_names.append("MCP_emission")
+
+    # 병렬 실행
+    if tasks:
+        print(f"[PREFETCH] {len(tasks)}개 도구 병렬 실행 시작: {task_names}")
+        start_time = asyncio.get_event_loop().time()
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        elapsed = asyncio.get_event_loop().time() - start_time
+        print(f"[PREFETCH] ✅ 병렬 실행 완료 ({elapsed:.2f}초)")
+
+        # 결과 처리
+        prefetched_context = {}
+        for i, (result, name) in enumerate(zip(results, task_names)):
+            if isinstance(result, Exception):
+                print(f"[PREFETCH] ⚠️ {name} 실패: {result}")
+                prefetched_context[name] = {"error": str(result)}
+            else:
+                print(f"[PREFETCH] ✓ {name} 성공")
+                prefetched_context[name] = result
+
+        return {
+            "prefetched_context": prefetched_context
+        }
+    else:
+        print("[PREFETCH] 실행할 도구 없음")
+        return {}
+
+
+async def _safe_rag_search(query: str) -> Dict[str, Any]:
+    """RAG 검색을 안전하게 실행 (예외 처리 포함)"""
+    try:
+        result = search_knowledge_base.invoke({"query": query, "k": 3, "use_hybrid": True})
+        return result
+    except Exception as e:
+        print(f"[RAG ERROR] {e}")
+        return {"status": "error", "message": str(e), "results": []}
+
 
 # Define the function that calls the model
 
@@ -157,12 +256,7 @@ async def call_model(
 
     # Initialize the model with tool binding. Change the model or add more tools here.
     # ChatAnthropic 객체 생성
-    # Enable streaming so LangGraph can emit token chunks during astream
-    llm = ChatAnthropic(
-        temperature=0.1,
-        model=configuration.model,
-        streaming=True
-    )
+    llm = ChatAnthropic(temperature=0.1, model=configuration.model)
     model = llm.bind_tools(all_tools)
     print(f"[CALL_MODEL] Model initialized with tools bound")
 
@@ -184,6 +278,27 @@ async def call_model(
     # 맥락 정보가 있으면 시스템 메시지에 추가
     if context_prompt_addition:
         system_message += context_prompt_addition
+
+    # 🚀 Prefetched context가 있으면 시스템 메시지에 추가
+    if hasattr(state, 'prefetched_context') and state.prefetched_context:
+        context_info = "\n\n**⚡ 미리 조회된 정보 (도구 재호출 불필요):**\n"
+
+        # RAG 검색 결과
+        if "RAG" in state.prefetched_context:
+            rag_result = state.prefetched_context["RAG"]
+            if rag_result.get("status") == "success":
+                context_info += f"\n📚 **지식베이스 검색 완료**: {rag_result.get('message', '')}\n"
+                context_info += "검색된 문서:\n"
+                for doc in rag_result.get("results", [])[:3]:
+                    context_info += f"- {doc.get('metadata', {}).get('source', 'Unknown')}: {doc.get('page_content', '')[:200]}...\n"
+            else:
+                context_info += f"\n📚 지식베이스: {rag_result.get('message', '검색 결과 없음')}\n"
+
+        # MCP 결과 등 추가 가능
+
+        context_info += "\n위 정보를 활용하여 답변하세요. 이미 조회된 정보이므로 동일한 도구를 다시 호출하지 마세요.\n"
+        system_message += context_info
+        print(f"[CALL_MODEL] Prefetched context 추가됨: {len(state.prefetched_context)} 항목")
 
     # LLM 응답 캐싱 (오프너 질문 등 반복적인 질문에 대해)
     cache_manager = get_cache_manager()
@@ -208,7 +323,6 @@ async def call_model(
             }
 
     # Get the model's response
-    import asyncio
     try:
         response = cast(  # 전체 대화 히스토리를 펼쳐서 ai에게 전달
             AIMessage,
@@ -217,10 +331,8 @@ async def call_model(
             ),
         ) # ainvoke는 모델을 비동기적으로 호출하고 그 결과를 반환받는 함수
     except asyncio.CancelledError:
-        print(f"[CALL_MODEL] Client disconnected during model invocation - propagating cancellation")
-        # Re-raise to properly cleanup the entire chain
-        # Don't return a message as the client has already disconnected
-        raise
+        print(f"[CALL_MODEL] Client disconnected during model invocation")
+        raise  # Re-raise to properly cleanup
     except Exception as e:
         print(f"[CALL_MODEL ERROR] {type(e).__name__}: {e}")
         raise
@@ -302,17 +414,21 @@ async def call_tools(state: State) -> Dict[str, List[ToolMessage]]:
     return await tool_node.ainvoke(state)
 
 
-# Define a new graph
+# ==================== 라우팅 함수 ====================
 
-builder = StateGraph(State, input=InputState, config_schema=Configuration)
+def route_after_prefetch(state: State) -> Literal["call_model", "__end__"]:
+    """Prefetch 이후 라우팅 결정
 
-# Define the two nodes we will cycle between
-builder.add_node(call_model)
-builder.add_node("tools", call_tools)  # 동적 도구 로드
+    FAQ 캐시에서 답변이 왔으면 바로 종료, 아니면 call_model로 진행
+    """
+    # FAQ 캐시에서 답변이 왔는지 확인
+    if hasattr(state, 'prefetched_context') and state.prefetched_context:
+        if state.prefetched_context.get("source") == "faq_cache":
+            print("[ROUTE] FAQ 캐시 히트, 즉시 종료")
+            return "__end__"
 
-# Set the entrypoint as `call_model`
-# This means that this node is the first one called
-builder.add_edge("__start__", "call_model")
+    # 일반적인 경우 call_model로 진행
+    return "call_model"
 
 
 def route_model_output(state: State) -> Literal["__end__", "tools"]:
@@ -337,6 +453,28 @@ def route_model_output(state: State) -> Literal["__end__", "tools"]:
     # Otherwise we execute the requested actions
     return "tools"
 
+
+# Define a new graph
+
+builder = StateGraph(State, input=InputState, config_schema=Configuration)
+
+# Define the nodes
+builder.add_node("smart_prefetch", smart_tool_prefetch)  # 🚀 병렬 도구 미리 실행
+builder.add_node(call_model)
+builder.add_node("tools", call_tools)  # 동적 도구 로드
+
+# Set the entrypoint as smart_prefetch (병렬 도구 실행부터 시작)
+builder.add_edge("__start__", "smart_prefetch")
+
+# Prefetch 이후 조건부 라우팅 (FAQ 캐시 히트면 바로 종료)
+builder.add_conditional_edges(
+    "smart_prefetch",
+    route_after_prefetch,
+    {
+        "call_model": "call_model",
+        "__end__": "__end__"
+    }
+)
 
 # Add a conditional edge to determine the next step after `call_model`
 builder.add_conditional_edges(

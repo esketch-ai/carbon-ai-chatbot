@@ -1,4 +1,4 @@
-"""Define the state structures for the agent."""
+# 상태 관리
 
 from __future__ import annotations
 
@@ -26,10 +26,10 @@ class InputState:
 
     Typically accumulates a pattern of:
     1. HumanMessage - user input
-    2. AIMessage with .tool_calls - agent picking tool(s) to use to collect information
-    3. ToolMessage(s) - the responses (or errors) from the executed tools
-    4. AIMessage without .tool_calls - agent responding in unstructured format to the user
-    5. HumanMessage - user responds with the next conversational turn
+    2. AIMessage with .tool_calls - agent picking tool(s) to use to collect information 에이전트가 툴 고름
+    3. ToolMessage(s) - the responses (or errors) from the executed tools 툴 실행결과
+    4. AIMessage without .tool_calls - agent responding in unstructured format to the user 에이전트가 비구조화된 형식으로 사용자에게 응답
+    5. HumanMessage - user responds with the next conversational turn 사용자가 다음 대화 턴에 응답
 
     Steps 2-5 may repeat as needed.
 
@@ -53,7 +53,7 @@ class State(InputState):
     It is set to 'True' when the step count reaches recursion_limit - 1.
     """
 
-    # 🔥 대화 맥락 유지를 위한 필드
+    # 대화 맥락 유지를 위한 필드
     conversation_context: dict = field(default_factory=dict)
     """
     대화 이력에서 추출한 맥락 정보
@@ -63,6 +63,17 @@ class State(InputState):
     - user_type: 감지된 사용자 유형
     - mentioned_entities: 언급된 주요 엔티티 (회사명, 제품명 등)
     - conversation_stage: 대화 단계 (초기/진행/심화)
+    """
+
+    # 🚀 병렬 도구 호출 결과 캐시
+    prefetched_context: dict = field(default_factory=dict)
+    """
+    질문 분석 후 미리 실행된 도구들의 결과
+
+    포함 내용:
+    - RAG: 지식베이스 검색 결과
+    - MCP_*: MCP 도구 호출 결과
+    - source: 결과 출처 (예: "faq_cache")
     """
 
     # Additional attributes can be added here as needed.

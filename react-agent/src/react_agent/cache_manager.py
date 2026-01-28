@@ -1,15 +1,50 @@
 # 캐시 매니저 - RAG 및 LLM 응답 캐싱
-# Redis 또는 메모리 기반 캐싱 지원
+# 메모리 기반 캐싱 지원
 
 import os
 import json
 import hashlib
 import logging
+import re
 from typing import Optional, Any, Dict
 from datetime import datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+# ==================== FAQ 데이터베이스 임포트 ====================
+
+try:
+    from react_agent.faq_rules import FAQ_DATABASE, get_all_faq_keys
+    logger.info(f"[FAQ] {len(FAQ_DATABASE)}개 FAQ 규칙 로드 완료")
+except ImportError:
+    logger.warning("[FAQ] faq_rules.py를 찾을 수 없습니다. 기본 FAQ 사용")
+    FAQ_DATABASE = {}
+
+
+def normalize_question(question: str) -> str:
+    """질문을 정규화하여 FAQ 매칭에 사용
+
+    Args:
+        question: 사용자 질문
+
+    Returns:
+        정규화된 질문 (소문자, 공백 제거, 특수문자 제거)
+    """
+    # 소문자 변환
+    normalized = question.lower()
+
+    # 특수문자 제거 (한글, 영문, 숫자만 남김)
+    normalized = re.sub(r'[^\w\s가-힣]', '', normalized)
+
+    # 연속된 공백을 하나로
+    normalized = re.sub(r'\s+', ' ', normalized)
+
+    # 앞뒤 공백 제거
+    normalized = normalized.strip()
+
+    return normalized
 
 
 class CacheManager:
@@ -222,6 +257,47 @@ class CacheManager:
                 logger.error(f"Redis 통계 조회 실패: {e}")
 
         return stats
+
+    def get_faq(self, question: str, similarity_threshold: float = 0.7) -> Optional[str]:
+        """FAQ 데이터베이스에서 답변 검색
+
+        질문을 정규화하고 FAQ 데이터베이스에서 유사한 질문을 찾습니다.
+
+        Args:
+            question: 사용자 질문
+            similarity_threshold: 유사도 임계값 (0~1, 기본값: 0.7)
+
+        Returns:
+            FAQ 답변 또는 None
+        """
+        normalized_q = normalize_question(question)
+
+        # 정확히 일치하는 키워드 찾기
+        for faq_key, faq_answer in FAQ_DATABASE.items():
+            # FAQ 키도 정규화
+            normalized_key = normalize_question(faq_key)
+
+            # 부분 문자열 매칭
+            if normalized_key in normalized_q or normalized_q in normalized_key:
+                logger.info(f"[FAQ HIT] '{question}' → '{faq_key}'")
+                return faq_answer
+
+            # 단어 기반 매칭 (유사도 계산)
+            key_words = set(normalized_key.split())
+            question_words = set(normalized_q.split())
+
+            if key_words and question_words:
+                # Jaccard 유사도
+                intersection = key_words & question_words
+                union = key_words | question_words
+                similarity = len(intersection) / len(union) if union else 0
+
+                if similarity >= similarity_threshold:
+                    logger.info(f"[FAQ HIT] '{question}' → '{faq_key}' (유사도: {similarity:.2f})")
+                    return faq_answer
+
+        logger.debug(f"[FAQ MISS] '{question}'")
+        return None
 
 
 # 전역 캐시 매니저 인스턴스
