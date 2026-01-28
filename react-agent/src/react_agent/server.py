@@ -77,11 +77,6 @@ def message_to_dict(msg):  # 랭체인 메세지를 json으로 변환 -> 프론�
                 "text": extracted_content
             }
         ]
-        print(f"[SERIALIZE] Extracted content: {extracted_content[:200]}...")
-    elif isinstance(result, dict) and result.get('content') == 'complex':
-        # Fallback: if content is still "complex", log warning
-        print(f"[SERIALIZE WARNING] Content is 'complex' - extraction may have failed")
-        print(f"[SERIALIZE WARNING] Message type: {type(msg)}, has content: {hasattr(msg, 'content')}")
 
     return result
 
@@ -536,8 +531,6 @@ async def create_run_stream(thread_id: str, request: Request):
         input_data = body.get("input", {})
         messages = input_data.get("messages", [])
         context = input_data.get("context", {})
-        print(f"[STREAM] Messages: {messages}")
-        print(f"[STREAM] Context: {context}")
 
         # Get configuration
         config = body.get("config", {})
@@ -558,8 +551,6 @@ async def create_run_stream(thread_id: str, request: Request):
         else:
             user_message = ""
 
-        print(f"[STREAM] User message: {user_message}")
-
         # Prepare configuration
         # Category can come from either context or config
         category = context.get("category") or config.get("configurable", {}).get("category")
@@ -571,15 +562,12 @@ async def create_run_stream(thread_id: str, request: Request):
                 "thread_id": thread_id
             }
         }
-        print(f"[STREAM] Graph config: {graph_config}")
 
         # Prepare input for graph
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         graph_input = {
             "messages": [HumanMessage(content=user_message)]
         }
-
-        print(f"[STREAM] Starting graph stream with astream_events...")
 
         # Streaming response using standard astream
         async def generate():
@@ -592,37 +580,9 @@ async def create_run_stream(thread_id: str, request: Request):
                 # This matches frontend streamMode: ["values"]
                 async for chunk in graph.astream(graph_input, config=graph_config, stream_mode="values"):
                     chunk_count += 1
-                    print(f"\n[STREAM] ===== Chunk {chunk_count} =====")
-                    print(f"[STREAM] Chunk keys: {list(chunk.keys())}")
-
-                    # Debug: print RAW messages BEFORE serialization
-                    if "messages" in chunk:
-                        print(f"[STREAM] Messages in chunk: {len(chunk['messages'])}")
-                        for idx, msg in enumerate(chunk['messages']):
-                            msg_type = type(msg).__name__
-                            print(f"[STREAM]   Message {idx}: type={msg_type}")
-                            if hasattr(msg, 'content'):
-                                raw_content = msg.content
-                                content_type = type(raw_content).__name__
-                                if isinstance(raw_content, str):
-                                    preview = raw_content[:200]
-                                elif isinstance(raw_content, list):
-                                    preview = f"LIST with {len(raw_content)} items"
-                                else:
-                                    preview = str(raw_content)[:200]
-                                print(f"[STREAM]     Raw content type: {content_type}")
-                                print(f"[STREAM]     Raw content preview: {preview}")
 
                     # Serialize chunk to JSON-serializable format
                     serialized_chunk = serialize_chunk(chunk)
-
-                    # Debug: print SERIALIZED messages
-                    if "messages" in serialized_chunk:
-                        print(f"[STREAM] Serialized messages: {len(serialized_chunk['messages'])}")
-                        for idx, msg in enumerate(serialized_chunk['messages']):
-                            content = msg.get('content', 'NO_CONTENT')
-                            content_preview = str(content)[:200] if content else 'EMPTY'
-                            print(f"[STREAM]   Serialized msg {idx}: content={content_preview}")
 
                     # Send as values event (SDK understands this)
                     stream_event = {
@@ -631,10 +591,7 @@ async def create_run_stream(thread_id: str, request: Request):
                     }
 
                     event_json = json.dumps(stream_event, ensure_ascii=False)
-                    print(f"[STREAM] Event JSON preview: {event_json[:300]}...")
                     yield f"data: {event_json}\n\n"
-
-                print(f"[STREAM] Stream completed with {chunk_count} chunks")
 
                 # Send end event
                 end_event = {
@@ -643,13 +600,10 @@ async def create_run_stream(thread_id: str, request: Request):
                 yield f"data: {json.dumps(end_event)}\n\n"
 
             except asyncio.CancelledError:
-                print(f"[STREAM] Client disconnected (CancelledError) after {chunk_count} chunks")
-                # Don't yield error event - client already disconnected
-                raise  # Re-raise to properly cleanup
+                # Client disconnected - don't yield error event
+                raise
             except Exception as e:
-                print(f"[STREAM ERROR] {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"❌ 스트리밍 오류: {e}")
                 error_event = {
                     "event": "error",
                     "data": {"error": str(e)}

@@ -49,74 +49,41 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
             break
 
     if not last_human_message:
-        print("[PREFETCH] 사용자 메시지 없음, 스킵")
         return {}
-
-    print(f"[PREFETCH] 질문 분석 시작: {last_human_message[:100]}...")
 
     # FAQ 캐시 확인 먼저
     cache_manager = get_cache_manager()
     faq_answer = cache_manager.get_faq(last_human_message)
     if faq_answer:
-        print(f"[PREFETCH] ✅ FAQ 캐시 히트!")
-        # FAQ 답변이 있으면 즉시 반환
+        print(f"✅ FAQ 캐시 히트")
         return {
             "messages": [AIMessage(content=faq_answer)],
             "prefetched_context": {"source": "faq_cache"}
         }
 
-    # 질문 유형 분석 (규칙 기반, 빠름)
-    question_lower = last_human_message.lower()
-
-    # 항상 RAG 검색은 실행 (대부분의 질문에 유용)
-    need_rag = True
-
-    # MCP 도구 필요 여부 판단
-    need_mcp_emission = any(kw in question_lower for kw in ['배출량', '배출권', '조회', '데이터', '통계'])
-    need_mcp_facility = any(kw in question_lower for kw in ['시설', '공장', 'top', '상위'])
-
-    print(f"[PREFETCH] 필요 도구: RAG={need_rag}, MCP_emission={need_mcp_emission}, MCP_facility={need_mcp_facility}")
-
-    # 병렬 실행할 작업 목록
+    # RAG 검색 실행
     tasks = []
     task_names = []
 
-    # 1. RAG 검색 (거의 항상 필요)
-    if need_rag:
-        tasks.append(asyncio.create_task(_safe_rag_search(last_human_message)))
-        task_names.append("RAG")
-
-    # 2. MCP 도구들 (필요시)
-    # TODO: MCP 도구 병렬 호출 추가 (구체적인 도구명이 필요)
-    # if need_mcp_emission:
-    #     tasks.append(asyncio.create_task(_safe_mcp_call("get_emission_data", {...})))
-    #     task_names.append("MCP_emission")
+    tasks.append(asyncio.create_task(_safe_rag_search(last_human_message)))
+    task_names.append("RAG")
 
     # 병렬 실행
     if tasks:
-        print(f"[PREFETCH] {len(tasks)}개 도구 병렬 실행 시작: {task_names}")
-        start_time = asyncio.get_event_loop().time()
-
         results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        elapsed = asyncio.get_event_loop().time() - start_time
-        print(f"[PREFETCH] ✅ 병렬 실행 완료 ({elapsed:.2f}초)")
 
         # 결과 처리
         prefetched_context = {}
         for i, (result, name) in enumerate(zip(results, task_names)):
             if isinstance(result, Exception):
-                print(f"[PREFETCH] ⚠️ {name} 실패: {result}")
                 prefetched_context[name] = {"error": str(result)}
             else:
-                print(f"[PREFETCH] ✓ {name} 성공")
                 prefetched_context[name] = result
 
         return {
             "prefetched_context": prefetched_context
         }
     else:
-        print("[PREFETCH] 실행할 도구 없음")
         return {}
 
 
@@ -141,15 +108,15 @@ async def _safe_rag_search(query: str) -> Dict[str, Any]:
 
             if is_netz_query:
                 # NET-Z 질문은 웹 검색 스킵, LLM이 MCP 도구 사용하도록 유도
-                print(f"[RAG] NET-Z 질문 감지, 웹 검색 스킵 → LLM이 MCP 도구 사용")
+                print(f"🔧 NET-Z 질문 감지 → MCP 도구 사용 대기")
                 return result
 
             # 일반 질문은 웹 검색 폴백
-            print(f"[RAG] 문서 없음 (임계값 미달), 웹 검색 시작...")
+            print(f"🌐 웹 검색 실행 중...")
             try:
                 web_result = await search(query)
                 if web_result:
-                    print(f"[WEB SEARCH] ✓ 웹 검색 완료")
+                    print(f"✅ 웹 검색 완료")
                     return {
                         "status": "web_fallback",
                         "message": f"지식베이스에서 관련 문서를 찾지 못해 웹 검색을 수행했습니다.",
@@ -158,10 +125,9 @@ async def _safe_rag_search(query: str) -> Dict[str, Any]:
                         "fallback_used": True
                     }
                 else:
-                    print(f"[WEB SEARCH] 검색 결과 없음")
                     return result
             except Exception as web_error:
-                print(f"[WEB SEARCH ERROR] {web_error}")
+                print(f"❌ 웹 검색 오류: {web_error}")
                 return result
 
         return result
@@ -283,22 +249,10 @@ async def call_model(
 
     # MCP 도구를 포함한 전체 도구 목록 가져오기
     all_tools = await get_all_tools()
-    # Safely get tool names (handle both Tool objects and functions)
-    tool_names = []
-    for tool in all_tools:
-        if hasattr(tool, 'name'):
-            tool_names.append(tool.name)
-        elif hasattr(tool, '__name__'):
-            tool_names.append(tool.__name__)
-        else:
-            tool_names.append(str(type(tool).__name__))
-    print(f"[CALL_MODEL] Loaded {len(all_tools)} tools: {tool_names}")
 
-    # Initialize the model with tool binding. Change the model or add more tools here.
-    # ChatAnthropic 객체 생성
+    # Initialize the model with tool binding
     llm = ChatAnthropic(temperature=0.1, model=configuration.model)
     model = llm.bind_tools(all_tools)
-    print(f"[CALL_MODEL] Model initialized with tools bound")
 
     # Format the system prompt. Customize this to change the agent's behavior.
     # 카테고리별 프롬프트 커스터마이징
@@ -361,7 +315,6 @@ async def call_model(
 
         context_info += "\n위 정보를 활용하여 답변하세요. 이미 조회된 정보이므로 동일한 도구를 다시 호출하지 마세요.\n"
         system_message += context_info
-        print(f"[CALL_MODEL] Prefetched context 추가됨: {len(state.prefetched_context)} 항목")
 
     # LLM 응답 캐싱 (오프너 질문 등 반복적인 질문에 대해)
     cache_manager = get_cache_manager()
@@ -387,17 +340,23 @@ async def call_model(
 
     # Get the model's response
     try:
-        response = cast(  # 전체 대화 히스토리를 펼쳐서 ai에게 전달
+        response = cast(
             AIMessage,
             await model.ainvoke(
                 [{"role": "system", "content": system_message}, *state.messages]
             ),
-        ) # ainvoke는 모델을 비동기적으로 호출하고 그 결과를 반환받는 함수
+        )
+
+        # 도구 호출 로깅
+        if response.tool_calls:
+            tool_names = [tc.get('name', 'unknown') for tc in response.tool_calls]
+            print(f"🔧 도구 호출: {', '.join(tool_names)}")
+
     except asyncio.CancelledError:
-        print(f"[CALL_MODEL] Client disconnected during model invocation")
-        raise  # Re-raise to properly cleanup
+        print(f"❌ 클라이언트 연결 끊김")
+        raise
     except Exception as e:
-        print(f"[CALL_MODEL ERROR] {type(e).__name__}: {e}")
+        print(f"❌ 모델 호출 오류: {type(e).__name__}: {e}")
         raise
 
     # Handle the case when it's the last step and the model still wants to use a tool
