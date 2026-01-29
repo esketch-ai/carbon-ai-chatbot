@@ -530,9 +530,9 @@ class RAGTool:
             return cached_result
 
         try:
-            # 쿼리에서 키워드 추출
-            keyword_query = self._extract_keywords_from_query(query)
-            logger.info(f"[검색] 원본 쿼리: '{query}' -> 키워드: '{keyword_query}'")
+            # 키워드 추출 비활성화 - 일관성을 위해 원본 쿼리 사용
+            keyword_query = query
+            logger.info(f"[검색] 쿼리: '{query}'")
 
             # 지식베이스 문서 수 확인
             try:
@@ -541,36 +541,9 @@ class RAGTool:
             except Exception as e:
                 logger.warning(f"지식베이스 문서 수 확인 실패: {e}")
 
-            # 키워드와 원본 쿼리 모두로 검색하여 더 많은 결과 확보
-            # 키워드가 원본과 다르면 두 번 검색, 같으면 한 번만 검색
-            all_docs_with_scores = []
-            seen_doc_ids = set()
-            original_docs_count = 0
-
-            # 1. 키워드로 검색
-            keyword_docs = self.vectorstore.similarity_search_with_score(keyword_query, k=k * 3)
-            logger.info(f"키워드 '{keyword_query}' 검색: {len(keyword_docs)}개 결과")
-
-            for doc, score in keyword_docs:
-                doc_id = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
-                if doc_id not in seen_doc_ids:
-                    all_docs_with_scores.append((doc, score))
-                    seen_doc_ids.add(doc_id)
-
-            # 2. 원본 쿼리로도 검색 (키워드와 다를 경우)
-            if keyword_query.lower() != query.lower():
-                original_docs = self.vectorstore.similarity_search_with_score(query, k=k * 3)
-                original_docs_count = len(original_docs)
-                print(f"[ORIGINAL QUERY] '{query}' search: {len(original_docs)} results")
-                for doc, score in original_docs:
-                    doc_id = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
-                    if doc_id not in seen_doc_ids:
-                        all_docs_with_scores.append((doc, score))
-                        seen_doc_ids.add(doc_id)
-
-            # 유사도 점수로 정렬 (거리가 작을수록 유사도 높음)
-            all_docs_with_scores.sort(key=lambda x: x[1])
-            docs_with_scores = all_docs_with_scores[:k * 3]  # 상위 k*3개만 사용
+            # 원본 쿼리로 검색 (일관성 보장)
+            docs_with_scores = self.vectorstore.similarity_search_with_score(query, k=k * 3)
+            logger.info(f"벡터 검색: {len(docs_with_scores)}개 결과")
 
             # 상위 5개 결과의 실제 점수 출력 (임계값 필터링 전)
             logger.debug(f"상위 {min(5, len(docs_with_scores))}개 문서 (필터링 전):")
