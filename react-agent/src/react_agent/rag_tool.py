@@ -487,41 +487,6 @@ class RAGTool:
             self._build_bm25_index()
         return self._bm25_index
 
-    def _extract_keywords_from_query(self, query: str) -> str:
-        """LLM을 사용하여 쿼리에서 핵심 키워드만 추출"""
-        try:
-            from langchain_anthropic import ChatAnthropic
-            from langchain_core.messages import HumanMessage
-
-            # 간단한 키워드 추출용 Claude 모델
-            llm = ChatAnthropic(
-                model="claude-haiku-4-5",  # 최신 Haiku 4.5 모델
-                temperature=0
-            )
-
-            # 키워드 추출 프롬프트 (더 많은 키워드를 추출하도록 개선)
-            prompt = f"""다음 질문에서 핵심 키워드를 추출하세요. 조사, 의문사, 요청어는 제거하고 명사 위주로 추출하세요.
-중요한 키워드는 모두 포함하세요. 최소 3-5개 이상의 키워드를 추출하세요.
-
-질문: {query}
-
-핵심 키워드 (공백으로 구분, 최소 3개 이상):"""
-
-            response = llm.invoke([HumanMessage(content=prompt)])
-            keywords = response.content.strip()
-
-            # 키워드가 너무 길거나 이상하면 원본 사용
-            if len(keywords) > len(query) or not keywords:
-                logger.debug(f"키워드 추출 실패, 원본 사용: '{query}'")
-                return query
-
-            logger.info(f"쿼리 요약: '{query}' -> '{keywords}'")
-            return keywords
-
-        except Exception as e:
-            logger.warning(f"키워드 추출 실패 (원본 사용): {e}")
-            return query
-
     def search_documents(self, query: str, k: int = 3, similarity_threshold: float = 0.5) -> List[Dict[str, Any]]:
         """
         문서 검색 (키워드 추출 + 코사인 유사도 기반)
