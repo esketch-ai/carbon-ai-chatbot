@@ -115,7 +115,7 @@ async def _safe_rag_search(query: str) -> Dict[str, Any]:
             # 일반 질문은 웹 검색 폴백
             print(f"🌐 웹 검색 실행 중...")
             try:
-                web_result = await search(query)
+                web_result = await search.ainvoke({"query": query})
                 if web_result:
                     print(f"✅ 웹 검색 완료")
                     return {

@@ -31,11 +31,11 @@ class AgentConfig:
     max_complexity: str
 
 
-# ============ 에이전트 레지스트리 ============
+# 에이전트 레지스트리
 
 AGENT_REGISTRY = {
 
-    # 매니저 에이전트 (Sonnet - 정확한 판단)
+    # 매니저 에이전트 
     AgentRole.MANAGER: AgentConfig(
         role=AgentRole.MANAGER,
         name="매니저 에이전트",
