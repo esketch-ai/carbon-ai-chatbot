@@ -406,6 +406,24 @@ class RAGTool:
 
         return self._vectorstore
 
+    def _normalize_query(self, query: str) -> str:
+        """검색 쿼리 정규화 (일관성 향상)"""
+        import re
+
+        # 1. 연속된 공백을 하나로 통일
+        normalized = re.sub(r'\s+', ' ', query)
+
+        # 2. "제 N차" → "제N차" (예: "제 4차" → "제4차")
+        normalized = re.sub(r'제\s+(\d+)\s*차', r'제\1차', normalized)
+
+        # 3. "N 차" → "N차" (예: "4 차" → "4차")
+        normalized = re.sub(r'(\d+)\s+차', r'\1차', normalized)
+
+        # 4. 앞뒤 공백 제거
+        normalized = normalized.strip()
+
+        return normalized
+
     def _tokenize(self, text: str) -> List[str]:
         """텍스트를 토큰으로 분할 (한국어/영어 지원)"""
         # 간단한 공백 기반 토크나이징
@@ -530,9 +548,12 @@ class RAGTool:
             return cached_result
 
         try:
-            # 키워드 추출 비활성화 - 일관성을 위해 원본 쿼리 사용
-            keyword_query = query
-            logger.info(f"[검색] 쿼리: '{query}'")
+            # 쿼리 정규화 (일관성 향상)
+            normalized_query = self._normalize_query(query)
+            if normalized_query != query:
+                logger.info(f"[검색] 쿼리 정규화: '{query}' → '{normalized_query}'")
+            else:
+                logger.info(f"[검색] 쿼리: '{query}'")
 
             # 지식베이스 문서 수 확인
             try:
@@ -541,8 +562,8 @@ class RAGTool:
             except Exception as e:
                 logger.warning(f"지식베이스 문서 수 확인 실패: {e}")
 
-            # 원본 쿼리로 검색 (일관성 보장)
-            docs_with_scores = self.vectorstore.similarity_search_with_score(query, k=k * 3)
+            # 정규화된 쿼리로 검색 (일관성 + 품질)
+            docs_with_scores = self.vectorstore.similarity_search_with_score(normalized_query, k=k * 3)
             logger.info(f"벡터 검색: {len(docs_with_scores)}개 결과")
 
             # 상위 5개 결과의 실제 점수 출력 (임계값 필터링 전)
@@ -659,6 +680,13 @@ class RAGTool:
             return cached_result
 
         try:
+            # 쿼리 정규화 (일관성 향상)
+            normalized_query = self._normalize_query(query)
+            if normalized_query != query:
+                logger.info(f"[하이브리드] 쿼리 정규화: '{query}' → '{normalized_query}'")
+            else:
+                logger.info(f"[하이브리드] 쿼리: '{query}'")
+
             # 지식베이스 문서 수 확인
             try:
                 total_docs = self.vectorstore._collection.count()
@@ -669,7 +697,7 @@ class RAGTool:
             # 1. 벡터 검색
             vector_results = {}
             if self.vectorstore is not None:
-                vector_docs = self.vectorstore.similarity_search_with_score(query, k=k * 3)
+                vector_docs = self.vectorstore.similarity_search_with_score(normalized_query, k=k * 3)
                 print(f"[VECTOR] {len(vector_docs)} results")
 
                 # 진단: 실제 distance 값 확인
@@ -691,8 +719,8 @@ class RAGTool:
             # 2. BM25 검색
             bm25_results = {}
             if self.bm25_index is not None and len(self._bm25_documents) > 0:
-                # 쿼리 토크나이징
-                tokenized_query = self._tokenize(query)
+                # 쿼리 토크나이징 (정규화된 쿼리 사용)
+                tokenized_query = self._tokenize(normalized_query)
                 # BM25 점수 계산
                 bm25_scores = self.bm25_index.get_scores(tokenized_query)
 
