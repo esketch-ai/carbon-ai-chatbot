@@ -71,14 +71,14 @@ class RAGTool:
             os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # 텔레메트리 비활성화
 
             self.embeddings = HuggingFaceEmbeddings(
-                model_name="jhgan/ko-sroberta-multitask",
+                model_name="dragonkue/BGE-m3-ko",
                 model_kwargs={
                     'device': 'cpu',
                     'trust_remote_code': False  # 보안 강화
                 },
                 encode_kwargs={'normalize_embeddings': True}  # 벡터 정규화 활성화
             )
-            logger.info("한국어 임베딩 모델 로드 완료 (정규화 활성화)")
+            logger.info("한국어 임베딩 모델 로드 완료: BGE-m3-ko (1024-dim, 정규화 활성화)")
         except Exception as e:
             logger.warning(f"한국어 임베딩 모델 로드 실패, 기본 모델 사용: {e}")
             self.embeddings = HuggingFaceEmbeddings(
@@ -359,13 +359,18 @@ class RAGTool:
                 logger.warning("로드할 문서가 없습니다.")
                 return False
             
-            # Chroma DB 생성 (cosine distance 사용)
+            # Chroma DB 생성 (HNSW 최적화 + cosine distance 사용)
             logger.info(f"벡터 DB 구축 중... ({len(documents)}개 문서 청크)")
             self._vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=self.embeddings,
                 persist_directory=str(self.chroma_db_path),
-                collection_metadata={"hnsw:space": "cosine"}  # Cosine distance 명시
+                collection_metadata={
+                    "hnsw:space": "cosine",  # Cosine distance 명시
+                    "hnsw:M": 16,  # 기본값(16)보다 낮춤 - 속도 우선 (메모리/속도 트레이드오프)
+                    "hnsw:ef_construction": 100,  # 인덱스 구축 시 탐색 깊이 (품질 유지)
+                    "hnsw:ef": 50  # 검색 시 탐색 깊이 (기본값보다 낮춤 - 속도 우선)
+                }
             )
 
             # 거리 메트릭 검증
@@ -745,31 +750,47 @@ class RAGTool:
                 )
                 bm25_ranks = {doc_key: rank for rank, (doc_key, _) in enumerate(bm25_sorted)}
 
-                # RRF로 순위 계산 및 결과 저장
-                for doc_key in all_doc_keys:
-                    vector_rank = vector_ranks.get(doc_key, len(vector_results))
-                    bm25_rank = bm25_ranks.get(doc_key, len(bm25_results))
+                # RRF로 순위 계산 및 결과 저장 (Numpy vectorization으로 최적화)
+                all_doc_keys_list = list(all_doc_keys)
 
-                    # RRF formula for ranking: 1/(k + rank)
-                    rrf_rank_score = 1.0 / (k_rrf + vector_rank + 1) + 1.0 / (k_rrf + bm25_rank + 1)
+                # Vectorized rank extraction
+                vector_ranks_array = np.array([
+                    vector_ranks.get(doc_key, len(vector_results))
+                    for doc_key in all_doc_keys_list
+                ])
+                bm25_ranks_array = np.array([
+                    bm25_ranks.get(doc_key, len(bm25_results))
+                    for doc_key in all_doc_keys_list
+                ])
 
-                    # 원본 점수로 hybrid_score 계산 (50:50 평균)
-                    vector_score = vector_results.get(doc_key, {}).get('score', 0.0)
-                    bm25_score = bm25_results.get(doc_key, {}).get('score', 0.0)
+                # Vectorized RRF calculation: 1/(k + rank + 1)
+                rrf_rank_scores = (1.0 / (k_rrf + vector_ranks_array + 1) +
+                                   1.0 / (k_rrf + bm25_ranks_array + 1))
 
-                    # 최종 점수: vector와 bm25의 평균 (절대적 품질 유지)
-                    hybrid_score = (vector_score + bm25_score) / 2.0
+                # Vectorized score extraction
+                vector_scores = np.array([
+                    vector_results.get(doc_key, {}).get('score', 0.0)
+                    for doc_key in all_doc_keys_list
+                ])
+                bm25_scores = np.array([
+                    bm25_results.get(doc_key, {}).get('score', 0.0)
+                    for doc_key in all_doc_keys_list
+                ])
 
-                    # 문서 객체 가져오기
+                # 최종 점수: vector와 bm25의 평균 (절대적 품질 유지)
+                hybrid_scores = (vector_scores + bm25_scores) / 2.0
+
+                # 결과 저장
+                for idx, doc_key in enumerate(all_doc_keys_list):
                     doc = vector_results.get(doc_key, bm25_results.get(doc_key, {})).get('doc')
 
                     if doc is not None:
                         combined_results[doc_key] = {
                             'doc': doc,
-                            'rrf_rank_score': rrf_rank_score,  # 정렬용
-                            'hybrid_score': hybrid_score,  # 임계값 필터링용
-                            'vector_score': vector_score,
-                            'bm25_score': bm25_score
+                            'rrf_rank_score': float(rrf_rank_scores[idx]),  # 정렬용
+                            'hybrid_score': float(hybrid_scores[idx]),  # 임계값 필터링용
+                            'vector_score': float(vector_scores[idx]),
+                            'bm25_score': float(bm25_scores[idx])
                         }
             else:
                 # 가중 평균 방식 (기존)
