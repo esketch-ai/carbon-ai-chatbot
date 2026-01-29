@@ -407,20 +407,18 @@ class RAGTool:
         return self._vectorstore
 
     def _normalize_query(self, query: str) -> str:
-        """검색 쿼리 정규화 (일관성 향상)"""
+        """검색 쿼리 정규화 (최소한의 정규화만 수행)"""
         import re
 
         # 1. 연속된 공백을 하나로 통일
         normalized = re.sub(r'\s+', ' ', query)
 
-        # 2. "제 N차" → "제N차" (예: "제 4차" → "제4차")
-        normalized = re.sub(r'제\s+(\d+)\s*차', r'제\1차', normalized)
-
-        # 3. "N 차" → "N차" (예: "4 차" → "4차")
-        normalized = re.sub(r'(\d+)\s+차', r'\1차', normalized)
-
-        # 4. 앞뒤 공백 제거
+        # 2. 앞뒤 공백 제거
         normalized = normalized.strip()
+
+        # 참고: 띄어쓰기 패턴 정규화는 제거
+        # 이유: 임베딩 모델이 이미 띄어쓰기를 잘 처리하며,
+        #       원본 문서의 표기법을 존중하는 것이 더 나은 결과를 제공
 
         return normalized
 

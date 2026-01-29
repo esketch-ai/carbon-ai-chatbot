@@ -33,7 +33,7 @@ async def search(query: str) -> Optional[dict[str, Any]]:
 
 
 @tool
-def search_knowledge_base(query: str, k: int = 3, use_hybrid: bool = True) -> dict[str, Any]:
+def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> dict[str, Any]:
     """회사 지식베이스에서 관련 문서를 검색합니다.
 
     이 도구는 하이브리드 검색(BM25 + 벡터)을 사용하여 탄소 배출권 관련 문서를 찾습니다.
@@ -72,12 +72,12 @@ def search_knowledge_base(query: str, k: int = 3, use_hybrid: bool = True) -> di
             query,
             k=k,
             alpha=0.5,  # 벡터 50% + BM25 50%
-            similarity_threshold=0.5  # 한국어 모델에 적합한 임계값
+            similarity_threshold=0.3  # 임계값 낮춤 (더 많은 결과 포함)
         )
         threshold_msg = "하이브리드 점수 0.5"
     else:
         # 벡터 검색 전용
-        results = rag_tool.search_documents(query, k=k, similarity_threshold=0.5)
+        results = rag_tool.search_documents(query, k=k, similarity_threshold=0.3)
         threshold_msg = "유사도 0.5"
 
     if not results:
