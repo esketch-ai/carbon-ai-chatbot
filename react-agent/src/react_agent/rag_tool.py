@@ -1,6 +1,8 @@
 # RAG (Retrieval-Augmented Generation) 도구
 # Chroma DB를 사용한 벡터 검색 및 문서 검색 기능
 
+from __future__ import annotations
+
 import os
 import logging
 from pathlib import Path
