@@ -454,11 +454,17 @@ EXPERT_DETAILS = {
 """,
         "tools_desc": """
 - **search_knowledge_base**: 배출권 관련 내부 문서 검색
-- **get_transaction_volume**: 실시간 거래량 조회 (date, period)
-- **get_market_price**: 현재 시장 가격 조회 (credit_type: KOC/KCU/KAU)
-- **get_emission_allocation**: 배출권 할당 정보 조회 (company_id, year)
-- **search_carbon_credits**: 배출권 검색 (filters)
-- **calculate_trading_fee**: 거래 수수료 계산 (amount, price)
+- **search**: 웹 검색 (최신 정보)
+- **get_total_emission**: 기업 전체 배출량 조회 (company_id, year)
+- **get_emission_type_ratio**: 배출원별 비율 분석 (company_id, year)
+- **get_scope_emission_comparison**: 연도별 Scope 배출량 비교 (company_id, start_year, end_year)
+- **get_top10_facilities_by_scope**: 배출량 상위 10개 사업장 (company_id, scope, year)
+- **get_company_id_by_name**: 회사명으로 ID 조회
+- **get_company_name_by_id**: ID로 회사명 조회
+- **list_all_companies**: 전체 기업 목록
+- **list_emission_activities**: 배출 활동 목록 (company_id)
+- **list_energy_by_activity**: 에너지 사용 내역 (activity_id)
+- **get_common_code**: 공통 코드 조회 (code_type)
 """
     },
 
@@ -475,9 +481,14 @@ EXPERT_DETAILS = {
         "tools_desc": """
 - **search_knowledge_base**: 규제 관련 내부 문서 검색
 - **search**: 최신 규제 정보 웹 검색
-- **calculate_scope_emissions**: Scope별 배출량 계산 (company_id, scope, year)
-- **get_compliance_report**: 규제 준수 리포트 조회 (company_id, year)
-- **validate_emission_data**: 배출량 데이터 검증 (data)
+- **get_total_emission**: 기업 전체 배출량 조회 (company_id, year)
+- **get_emission_type_ratio**: 배출원별 비율 분석 (company_id, year)
+- **get_scope_emission_comparison**: 연도별 Scope 배출량 비교 (company_id, start_year, end_year)
+- **get_top10_facilities_by_scope**: 배출량 상위 10개 사업장 (company_id, scope, year)
+- **list_emission_activities**: 배출 활동 목록 (company_id)
+- **list_energy_by_activity**: 에너지 사용 내역 (activity_id)
+- **get_company_id_by_name**: 회사명으로 ID 조회
+- **get_common_code**: 공통 코드 조회 (code_type)
 """
     },
 

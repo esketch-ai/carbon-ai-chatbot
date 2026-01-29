@@ -116,10 +116,11 @@ async def simple_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
     from react_agent.tools import get_all_tools
     all_tools = await get_all_tools()
 
-    # 허용된 도구만 필터링
+    # 허용된 도구만 필터링 (기본 도구만 체크, MCP 도구는 모두 허용)
+    base_tool_names = ["search_knowledge_base", "search", "classify_customer_segment"]
     allowed_tools = [
         tool for tool in all_tools
-        if tool.name in agent_config.tools
+        if tool.name in agent_config.tools or tool.name not in base_tool_names
     ]
 
     # Haiku 모델 + 도구 바인딩
@@ -189,10 +190,11 @@ async def expert_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
     from react_agent.tools import get_all_tools
     all_tools = await get_all_tools()
 
-    # 허용된 도구만 필터링
+    # 허용된 도구만 필터링 (기본 도구만 체크, MCP 도구는 모두 허용)
+    base_tool_names = ["search_knowledge_base", "search", "classify_customer_segment"]
     allowed_tools = [
         tool for tool in all_tools
-        if tool.name in agent_config.tools
+        if tool.name in agent_config.tools or tool.name not in base_tool_names
     ]
 
     logger.info(
