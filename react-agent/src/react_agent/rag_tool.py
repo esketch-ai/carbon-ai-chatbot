@@ -316,36 +316,16 @@ class RAGTool:
                 logger.warning("로드할 문서가 없습니다.")
                 return False
 
-            # Chroma DB 생성 (HNSW 최적화 + cosine distance 사용)
+            # Chroma DB 생성 (cosine distance 사용)
             logger.info(f"벡터 DB 구축 중... ({len(documents)}개 문서 청크)")
             self._vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=self.embeddings,
                 persist_directory=str(self.chroma_db_path),
-                collection_metadata={
-                    "hnsw:space": "cosine",  # Cosine distance 명시
-                    "hnsw:M": 16,  # 기본값 유지 - 메모리/속도 트레이드오프
-                    "hnsw:ef_construction": 100,  # 인덱스 구축 시 탐색 깊이 (품질 유지)
-                    "hnsw:ef": 50  # 검색 시 탐색 깊이 (기본값보다 낮춤 - 속도 우선)
-                }
+                collection_metadata={"hnsw:space": "cosine"}
             )
 
-            # 거리 메트릭 검증
-            try:
-                collection = self._vectorstore._collection
-                if collection and hasattr(collection, 'metadata') and collection.metadata:
-                    actual_metric = collection.metadata.get('hnsw:space', 'unknown')
-                    logger.info(f"✓ 벡터 DB 구축 완료: {len(documents)}개 문서")
-                    logger.info(f"  - Distance metric: {actual_metric}")
-                    logger.info(f"  - Embeddings normalized: True")
-                    logger.info(f"  - HNSW optimized: M=16, ef=50")
-                    if actual_metric != 'cosine':
-                        logger.warning(f"예상 메트릭(cosine)과 실제({actual_metric})가 다릅니다!")
-                else:
-                    logger.info(f"✓ 벡터 DB 구축 완료: {len(documents)}개 문서")
-                    logger.info(f"  - HNSW optimized: M=16, ef=50")
-            except Exception as e:
-                logger.warning(f"거리 메트릭 검증 실패: {e}")
+            logger.info(f"✓ 벡터 DB 구축 완료: {len(documents)}개 문서 (distance: cosine)")
 
             return True
 
