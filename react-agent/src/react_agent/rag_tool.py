@@ -284,13 +284,57 @@ class RAGTool:
         logger.info(f"총 {len(documents)}개 문서 청크 로드 완료")
         return documents
 
+    def _check_embedding_dimension_match(self) -> bool:
+        """기존 벡터 DB의 임베딩 차원이 현재 모델과 일치하는지 확인"""
+        try:
+            test_embedding = self.embeddings.embed_query("test")
+            current_dim = len(test_embedding)
+
+            temp_store = Chroma(
+                persist_directory=str(self.chroma_db_path),
+                embedding_function=self.embeddings
+            )
+            collection = temp_store._collection
+            count = collection.count()
+            if count == 0:
+                return True  # 비어있으면 호환으로 간주
+
+            # 기존 DB에서 하나 가져와서 차원 확인
+            result = collection.peek(limit=1)
+            if result and result.get('embeddings') and len(result['embeddings']) > 0:
+                db_dim = len(result['embeddings'][0])
+                if db_dim != current_dim:
+                    logger.warning(
+                        f"임베딩 차원 불일치! DB: {db_dim}, 현재 모델: {current_dim}. "
+                        f"벡터 DB를 재구축합니다."
+                    )
+                    return False
+            return True
+        except Exception as e:
+            logger.warning(f"임베딩 차원 확인 실패: {e}")
+            return True  # 확인 실패 시 기존 DB 사용
+
+    def _rebuild_vectorstore(self):
+        """기존 벡터 DB를 삭제하고 재구축"""
+        import shutil
+        logger.info("기존 벡터 DB를 삭제합니다...")
+        try:
+            shutil.rmtree(str(self.chroma_db_path))
+            logger.info("기존 벡터 DB 삭제 완료")
+        except Exception as e:
+            logger.error(f"벡터 DB 삭제 실패: {e}")
+
     def _build_vectorstore_if_needed(self) -> bool:
-        """벡터 DB가 없으면 자동으로 구축"""
+        """벡터 DB가 없으면 자동으로 구축, 차원 불일치 시 재구축"""
         if self._vectorstore is not None:
             return True
 
+        # 기존 DB가 있으면 차원 일치 여부 확인
         if self.chroma_db_path.exists() and any(self.chroma_db_path.iterdir()):
-            return False
+            if self._check_embedding_dimension_match():
+                return False  # 기존 DB 사용
+            else:
+                self._rebuild_vectorstore()  # 차원 불일치 → 재구축
 
         if not self.knowledge_base_path.exists():
             logger.warning(f"지식베이스 경로가 존재하지 않습니다: {self.knowledge_base_path}")
