@@ -61,9 +61,22 @@ class RAGTool:
         
         # 임베딩 모델 초기화
         try:
+            import os
+            # HF_TOKEN 설정 (있으면 사용, 없으면 무시)
+            hf_token = os.environ.get("HF_TOKEN")
+            if hf_token:
+                os.environ["HUGGINGFACE_HUB_TOKEN"] = hf_token
+
+            # Safetensors 자동 변환 비활성화 (타임아웃 방지)
+            os.environ["TRANSFORMERS_OFFLINE"] = "0"  # 온라인 유지
+            os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # 텔레메트리 비활성화
+
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="jhgan/ko-sroberta-multitask",
-                model_kwargs={'device': 'cpu'},
+                model_kwargs={
+                    'device': 'cpu',
+                    'trust_remote_code': False  # 보안 강화
+                },
                 encode_kwargs={'normalize_embeddings': True}  # 벡터 정규화 활성화
             )
             logger.info("한국어 임베딩 모델 로드 완료 (정규화 활성화)")

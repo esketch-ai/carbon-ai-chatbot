@@ -45,7 +45,7 @@ def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> di
       - 벡터: 의미 기반 검색 (문맥 이해에 강함)
       - alpha=0.5: 두 방식을 50:50으로 결합
     - **벡터 검색 전용**: use_hybrid=False로 설정 시 기존 벡터 검색만 사용
-    - LLM을 사용하여 쿼리에서 핵심 키워드를 추출합니다.
+    - 쿼리는 최소한의 정규화(공백 정리)만 수행됩니다.
     - 중복된 문서는 자동으로 제거됩니다.
 
     **중요**:
