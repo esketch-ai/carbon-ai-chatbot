@@ -561,7 +561,7 @@ class RAGTool:
             if keyword_query.lower() != query.lower():
                 original_docs = self.vectorstore.similarity_search_with_score(query, k=k * 3)
                 original_docs_count = len(original_docs)
-                print(f"🔍 원본 '{query}' 검색: {len(original_docs)}개 결과")
+                print(f"[ORIGINAL QUERY] '{query}' search: {len(original_docs)} results")
                 for doc, score in original_docs:
                     doc_id = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
                     if doc_id not in seen_doc_ids:
@@ -697,11 +697,11 @@ class RAGTool:
             vector_results = {}
             if self.vectorstore is not None:
                 vector_docs = self.vectorstore.similarity_search_with_score(query, k=k * 3)
-                print(f"🔍 벡터 검색: {len(vector_docs)}개 결과")
+                print(f"[VECTOR] {len(vector_docs)} results")
 
                 # 진단: 실제 distance 값 확인
                 if vector_docs:
-                    print(f"🔬 벡터 거리 진단 (상위 3개):")
+                    print(f"[VECTOR DISTANCE] Top 3:")
                     for idx, (doc, distance) in enumerate(vector_docs[:3]):
                         filename = doc.metadata.get('filename', 'unknown')
                         print(f"  - {filename}: distance={distance:.4f}")
@@ -729,7 +729,7 @@ class RAGTool:
 
                 # 상위 k*3개만 선택
                 top_indices = np.argsort(normalized_scores)[::-1][:k * 3]
-                print(f"🔍 BM25 검색: {len(top_indices)}개 결과")
+                print(f"[BM25] {len(top_indices)} results")
 
                 for idx in top_indices:
                     doc = self._bm25_documents[idx]

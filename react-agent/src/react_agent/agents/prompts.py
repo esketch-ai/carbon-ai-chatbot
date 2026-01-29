@@ -42,55 +42,55 @@ VISUALIZATION_GUIDE = """
 
 **AG Charts 예시 1 - Pie Chart:**
 ```agchart
-{{
+{
   "data": [
-    {{ "category": "Scope 1", "value": 45 }},
-    {{ "category": "Scope 2", "value": 35 }},
-    {{ "category": "Scope 3", "value": 20 }}
+    { "category": "Scope 1", "value": 45 },
+    { "category": "Scope 2", "value": 35 },
+    { "category": "Scope 3", "value": 20 }
   ],
-  "series": [{{
+  "series": [{
     "type": "pie",
     "angleKey": "value",
     "legendItemKey": "category"
-  }}],
-  "title": {{ "text": "배출권 유형별 비중" }}
-}}
+  }],
+  "title": { "text": "배출권 유형별 비중" }
+}
 ```
 
 **AG Charts 예시 2 - Bar Chart:**
 ```agchart
-{{
+{
   "data": [
-    {{ "month": "1월", "emissions": 120 }},
-    {{ "month": "2월", "emissions": 95 }},
-    {{ "month": "3월", "emissions": 110 }}
+    { "month": "1월", "emissions": 120 },
+    { "month": "2월", "emissions": 95 },
+    { "month": "3월", "emissions": 110 }
   ],
-  "series": [{{
+  "series": [{
     "type": "bar",
     "xKey": "month",
     "yKey": "emissions",
     "yName": "배출량 (tCO2)"
-  }}],
-  "title": {{ "text": "월별 배출량" }}
-}}
+  }],
+  "title": { "text": "월별 배출량" }
+}
 ```
 
 **AG Charts 예시 3 - Line Chart:**
 ```agchart
-{{
+{
   "data": [
-    {{ "year": "2021", "price": 25000 }},
-    {{ "year": "2022", "price": 28000 }},
-    {{ "year": "2023", "price": 32000 }}
+    { "year": "2021", "price": 25000 },
+    { "year": "2022", "price": 28000 },
+    { "year": "2023", "price": 32000 }
   ],
-  "series": [{{
+  "series": [{
     "type": "line",
     "xKey": "year",
     "yKey": "price",
     "yName": "가격 (원/tCO2)"
-  }}],
-  "title": {{ "text": "배출권 가격 추이" }}
-}}
+  }],
+  "title": { "text": "배출권 가격 추이" }
+}
 ```
 
 ---
@@ -102,17 +102,17 @@ VISUALIZATION_GUIDE = """
 
 **AG Grid 예시:**
 ```aggrid
-{{
+{
   "columnDefs": [
-    {{ "field": "company", "headerName": "기업명" }},
-    {{ "field": "emissions", "headerName": "배출량 (tCO2)" }},
-    {{ "field": "target", "headerName": "목표 (tCO2)" }}
+    { "field": "company", "headerName": "기업명" },
+    { "field": "emissions", "headerName": "배출량 (tCO2)" },
+    { "field": "target", "headerName": "목표 (tCO2)" }
   ],
   "rowData": [
-    {{ "company": "A사", "emissions": 15000, "target": 12000 }},
-    {{ "company": "B사", "emissions": 8000, "target": 8500 }}
+    { "company": "A사", "emissions": 15000, "target": 12000 },
+    { "company": "B사", "emissions": 8000, "target": 8500 }
   ]
-}}
+}
 ```
 
 ---
@@ -124,24 +124,24 @@ VISUALIZATION_GUIDE = """
 
 **Map 예시 - Scatterplot:**
 ```map
-{{
-  "initialViewState": {{
+{
+  "initialViewState": {
     "longitude": 126.9780,
     "latitude": 37.5665,
     "zoom": 11
-  }},
-  "layers": [{{
+  },
+  "layers": [{
     "type": "scatterplot",
     "data": [
-      {{
+      {
         "position": [126.9780, 37.5665],
         "radius": 200,
         "color": [255, 100, 50, 200],
         "name": "본사"
-      }}
+      }
     ]
-  }}]
-}}
+  }]
+}
 ```
 
 ---
