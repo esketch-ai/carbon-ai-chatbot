@@ -724,7 +724,7 @@ class RAGTool:
             use_rrf = alpha < 0  # 음수 alpha는 RRF 활성화 신호
 
             if use_rrf:
-                # RRF 방식: 순위 기반 점수 계산
+                # RRF 방식: 순위로 정렬, 점수는 vector+bm25 평균 사용
                 k_rrf = 60  # RRF 상수 (일반적으로 60이 최적)
 
                 # Vector 결과 순위 생성
@@ -743,17 +743,20 @@ class RAGTool:
                 )
                 bm25_ranks = {doc_key: rank for rank, (doc_key, _) in enumerate(bm25_sorted)}
 
-                # RRF 점수 계산
+                # RRF로 순위 계산 및 결과 저장
                 for doc_key in all_doc_keys:
                     vector_rank = vector_ranks.get(doc_key, len(vector_results))
                     bm25_rank = bm25_ranks.get(doc_key, len(bm25_results))
 
-                    # RRF formula: 1/(k + rank)
-                    rrf_score = 1.0 / (k_rrf + vector_rank + 1) + 1.0 / (k_rrf + bm25_rank + 1)
+                    # RRF formula for ranking: 1/(k + rank)
+                    rrf_rank_score = 1.0 / (k_rrf + vector_rank + 1) + 1.0 / (k_rrf + bm25_rank + 1)
 
-                    # 원본 점수 (디버깅/로깅용)
+                    # 원본 점수로 hybrid_score 계산 (50:50 평균)
                     vector_score = vector_results.get(doc_key, {}).get('score', 0.0)
                     bm25_score = bm25_results.get(doc_key, {}).get('score', 0.0)
+
+                    # 최종 점수: vector와 bm25의 평균 (절대적 품질 유지)
+                    hybrid_score = (vector_score + bm25_score) / 2.0
 
                     # 문서 객체 가져오기
                     doc = vector_results.get(doc_key, bm25_results.get(doc_key, {})).get('doc')
@@ -761,7 +764,8 @@ class RAGTool:
                     if doc is not None:
                         combined_results[doc_key] = {
                             'doc': doc,
-                            'hybrid_score': rrf_score,
+                            'rrf_rank_score': rrf_rank_score,  # 정렬용
+                            'hybrid_score': hybrid_score,  # 임계값 필터링용
                             'vector_score': vector_score,
                             'bm25_score': bm25_score
                         }
@@ -786,11 +790,19 @@ class RAGTool:
                         }
 
             # 4. 하이브리드 점수로 정렬
-            sorted_results = sorted(
-                combined_results.items(),
-                key=lambda x: x[1]['hybrid_score'],
-                reverse=True
-            )
+            # RRF 사용 시: rrf_rank_score로 정렬, 가중평균 사용 시: hybrid_score로 정렬
+            if use_rrf:
+                sorted_results = sorted(
+                    combined_results.items(),
+                    key=lambda x: x[1].get('rrf_rank_score', x[1]['hybrid_score']),
+                    reverse=True
+                )
+            else:
+                sorted_results = sorted(
+                    combined_results.items(),
+                    key=lambda x: x[1]['hybrid_score'],
+                    reverse=True
+                )
 
             # 상위 5개 결과의 실제 점수 출력 (임계값 필터링 전)
             logger.debug(f"상위 {min(5, len(sorted_results))}개 문서 (필터링 전):")
