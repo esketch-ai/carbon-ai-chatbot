@@ -27,6 +27,17 @@ async def search(query: str) -> Optional[dict[str, Any]]:
     This function performs a search using the Tavily search engine, which is designed
     to provide comprehensive, accurate, and trusted results. It's particularly useful
     for answering questions about current events.
+
+    **IMPORTANT - Citation Required:**
+    After using this tool, you MUST include a "출처:" section at the end of your response
+    with the top 5 sources in this format:
+
+    출처:
+    1. [Title](URL)
+    2. [Title](URL)
+    ...
+
+    The search results include 'url' and 'title' fields for each result.
     """
     configuration = Configuration.from_context()
     wrapped = TavilySearch(max_results=configuration.max_search_results)
@@ -189,7 +200,7 @@ def geocode_location(query: str) -> dict[str, Any]:
     }
 
 
-# ==================== MCP 통합 ====================
+# mcp 통합
 
 # NET-Z MCP 클라이언트 (전역, lazy 초기화)
 _netz_mcp_client: Optional[SSEMCPClient] = None
