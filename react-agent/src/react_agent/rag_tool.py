@@ -677,10 +677,12 @@ class RAGTool:
 
                 # 진단: 실제 distance 값 확인
                 if vector_docs:
-                    print(f"[VECTOR DISTANCE] Top 3:")
+                    print(f"[VECTOR] Top 3 (distance → similarity):")
                     for idx, (doc, distance) in enumerate(vector_docs[:3]):
                         filename = doc.metadata.get('filename', 'unknown')
-                        print(f"  - {filename}: distance={distance:.4f}")
+                        similarity = 1.0 - distance
+                        status = "HIGH" if similarity >= 0.7 else "MED" if similarity >= 0.5 else "LOW"
+                        print(f"  - {filename[:60]}: dist={distance:.4f} → sim={similarity:.4f} [{status}]")
 
                 for doc, distance in vector_docs:
                     doc_key = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
