@@ -122,6 +122,22 @@ VISUALIZATION_GUIDE = """
 - **코드 블록**: ```map 로 시작
 - **형식**: JSON 설정 (initialViewState, layers)
 
+**⚠️ 중요: 좌표가 없을 때**
+사용자가 장소명만 제공하고 좌표를 모를 때:
+1. **먼저 `geocode_location` 툴 사용** (예: geocode_location("서울시청"))
+2. 반환된 latitude, longitude를 지도에 사용
+3. **geocoding 실패 시**: `search` 툴로 웹 검색 → 주소 확인 → 다시 geocode
+4. 좌표를 모르면 절대 임의의 값을 사용하지 말 것!
+
+**Geocoding 실패 시 대처법:**
+```
+사용자: "한국교통공사가 어디야?"
+→ geocode_location("한국교통공사") 실패
+→ search("한국교통공사 주소") 로 웹 검색
+→ "서울특별시 중구 세종대로 110" 발견
+→ geocode_location("서울특별시 중구 세종대로 110") 성공!
+```
+
 **Map 예시 - Scatterplot:**
 ```map
 {
@@ -141,6 +157,17 @@ VISUALIZATION_GUIDE = """
       }
     ]
   }]
+}
+```
+
+**실전 예시 - 장소명에서 지도 생성:**
+사용자: "한국교통공사가 어디야?"
+1. `geocode_location("한국교통공사")` 호출 → {latitude: 37.5665, longitude: 126.9780}
+2. 좌표로 지도 생성:
+```map
+{
+  "initialViewState": {"longitude": 126.9780, "latitude": 37.5665, "zoom": 13},
+  "layers": [{"type": "scatterplot", "data": [{"position": [126.9780, 37.5665], "name": "한국교통공사"}]}]
 }
 ```
 

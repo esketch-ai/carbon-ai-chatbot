@@ -15,6 +15,7 @@ from langchain_core.tools import tool
 from react_agent.configuration import Configuration
 from react_agent.rag_tool import get_rag_tool
 from react_agent.sse_mcp_client import SSEMCPClient
+from react_agent.geocoding_tool import get_geocoding_tool
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,58 @@ def classify_customer_segment(question: str) -> dict[str, Any]:
         "segment": segment,
         "confidence": "high" if segment != "일반" else "medium",
         "question": question
+    }
+
+
+@tool
+def geocode_location(query: str) -> dict[str, Any]:
+    """장소명이나 주소를 위도/경도 좌표로 변환합니다.
+
+    이 도구는 사용자가 지도에 표시하고 싶은 장소의 이름이나 주소를 입력하면
+    해당 위치의 정확한 좌표(위도, 경도)를 반환합니다.
+
+    **사용 예시**:
+    - "한국교통공사"
+    - "서울시청"
+    - "서울특별시 중구 세종대로 110"
+    - "부산 해운대구"
+
+    **결과**:
+    - latitude: 위도 (예: 37.5665)
+    - longitude: 경도 (예: 126.9780)
+    - display_name: 전체 주소
+    - address: 상세 주소 정보
+
+    **중요**:
+    - 한국 지역에 최적화되어 있습니다
+    - 검색 결과가 없으면 status="not_found" 반환
+    - 지도 시각화 시 이 도구로 먼저 좌표를 얻어야 합니다
+
+    Args:
+        query: 검색할 장소명 또는 주소
+
+    Returns:
+        좌표 정보 또는 오류 메시지
+    """
+    geocoding_tool = get_geocoding_tool()
+
+    result = geocoding_tool.geocode(query, country_code="kr")
+
+    if result is None:
+        return {
+            "status": "not_found",
+            "message": f"'{query}'에 대한 위치 정보를 찾을 수 없습니다.",
+            "query": query
+        }
+
+    return {
+        "status": "success",
+        "message": f"'{query}'의 위치를 찾았습니다: {result['display_name']}",
+        "query": query,
+        "latitude": result["latitude"],
+        "longitude": result["longitude"],
+        "display_name": result["display_name"],
+        "address": result["address"]
     }
 
 
@@ -374,6 +427,7 @@ _BASE_TOOLS: List[Callable[..., Any]] = [
     search,
     search_knowledge_base,
     classify_customer_segment,
+    geocode_location,
 ]
 
 # 초기 TOOLS (MCP 도구는 첫 요청 시 동적 로드됨)
@@ -383,6 +437,7 @@ logger.info(f"[도구 초기화] 기본 {len(_BASE_TOOLS)}개 툴 등록")
 logger.info("  ✓ search - 일반 웹 검색")
 logger.info("  ✓ search_knowledge_base - 지식베이스 검색")
 logger.info("  ✓ classify_customer_segment - 고객 세그먼트 분류")
+logger.info("  ✓ geocode_location - 장소/주소 좌표 변환")
 logger.info("  → NET-Z MCP 도구는 첫 요청 시 자동으로 로드됩니다")
 
 
