@@ -29,13 +29,16 @@ VISUALIZATION_GUIDE = """
 ** 시각화 도구 선택 가이드:**
 1. **데이터 차트** (숫자, 통계, 비율) → **AG Charts 사용** 📊
 2. **프로세스/플로우** (절차, 흐름, 상태) → **Mermaid 사용** 🔄
-3. **테이블** (표 형식 데이터) → **AG Grid 사용** 📋
+3. **테이블** (표 형식 데이터) → **AG Grid 우선 사용** 📋
 4. **지도/위치** (지리 데이터, 위치 정보) → **Map 사용** 🗺️
 
-**⚠️ CRITICAL - Markdown 표 사용 금지:**
-- Markdown 표 (`| 열1 | 열2 |` 형식)는 절대 사용하지 마세요!
-- 모든 표 데이터는 반드시 **```aggrid** 블록을 사용하세요
-- 2개 이상의 행이 있는 데이터 = AG Grid 필수!
+**⚠️ 표 형식 데이터 규칙:**
+- **우선**: AG Grid (```aggrid) 사용 - interactive, 정렬/필터 가능
+- **허용**: Markdown 표는 다음 경우에만:
+  - 1-2행의 매우 간단한 데이터
+  - AG Grid JSON 생성이 어려운 경우
+  - 빠른 응답이 필요한 경우
+- **권장**: 3행 이상의 데이터는 반드시 AG Grid 사용
 
 ---
 
@@ -100,11 +103,11 @@ VISUALIZATION_GUIDE = """
 
 ---
 
-**📋 AG Grid 사용법 (테이블) - REQUIRED FOR ALL TABLES:**
-- **사용 시점**: 2개 이상의 행이 있는 표 데이터를 보여줄 때 (필수!)
+**📋 AG Grid 사용법 (테이블) - PREFERRED:**
+- **사용 시점**: 3행 이상의 표 데이터를 보여줄 때 (우선 사용)
 - **코드 블록**: ```aggrid 로 시작
 - **형식**: JSON 설정 (columnDefs, rowData)
-- **중요**: Markdown 표 대신 반드시 AG Grid를 사용하세요!
+- **장점**: 정렬, 필터링, 페이징 등 interactive 기능 제공
 
 **AG Grid 예시:**
 ```aggrid
@@ -215,12 +218,12 @@ flowchart TD
 **시각화 선택 기준:**
 - **숫자/통계** → AG Charts (pie, bar, line)
 - **절차/프로세스** → Mermaid (flowchart)
-- **테이블 (2행 이상)** → AG Grid (Markdown 표 ❌ 금지!)
+- **테이블 (3행 이상)** → AG Grid 우선 (Markdown 표는 간단한 경우만)
 - **위치/지리** → Map (scatterplot, path, hexagon)
 
-**⚠️ 다시 한 번 강조:**
-표 데이터가 있으면 반드시 ```aggrid 블록을 사용하세요.
-Markdown 표 (`| 열1 | 열2 |` 형식)는 절대 사용하지 마세요!
+**표 선택 가이드:**
+- **AG Grid 우선**: 3행 이상, interactive 필요, 정렬/필터 필요
+- **Markdown 허용**: 1-2행의 간단한 요약, 빠른 응답 필요
 """
 
 
