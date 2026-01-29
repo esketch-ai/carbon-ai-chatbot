@@ -63,13 +63,15 @@ class RAGTool:
         try:
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="jhgan/ko-sroberta-multitask",
-                model_kwargs={'device': 'cpu'}
+                model_kwargs={'device': 'cpu'},
+                encode_kwargs={'normalize_embeddings': True}  # 벡터 정규화 활성화
             )
-            logger.info("한국어 임베딩 모델 로드 완료")
+            logger.info("한국어 임베딩 모델 로드 완료 (정규화 활성화)")
         except Exception as e:
             logger.warning(f"한국어 임베딩 모델 로드 실패, 기본 모델 사용: {e}")
             self.embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/all-MiniLM-L6-v2"
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                encode_kwargs={'normalize_embeddings': True}  # 벡터 정규화 활성화
             )
         
         # 텍스트 분할기 (의미적 청킹 전략)
@@ -345,15 +347,26 @@ class RAGTool:
                 logger.warning("로드할 문서가 없습니다.")
                 return False
             
-            # Chroma DB 생성
+            # Chroma DB 생성 (cosine distance 사용)
             logger.info(f"벡터 DB 구축 중... ({len(documents)}개 문서 청크)")
             self._vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=self.embeddings,
-                persist_directory=str(self.chroma_db_path)
+                persist_directory=str(self.chroma_db_path),
+                collection_metadata={"hnsw:space": "cosine"}  # Cosine distance 명시
             )
-            
-            logger.info(f"✓ 벡터 DB 구축 완료: {len(documents)}개 문서")
+
+            # 거리 메트릭 검증
+            try:
+                actual_metric = self._vectorstore._collection.metadata.get('hnsw:space', 'unknown')
+                logger.info(f"✓ 벡터 DB 구축 완료: {len(documents)}개 문서")
+                logger.info(f"  - Distance metric: {actual_metric}")
+                logger.info(f"  - Embeddings normalized: True")
+                if actual_metric != 'cosine':
+                    logger.warning(f"예상 메트릭(cosine)과 실제({actual_metric})가 다릅니다!")
+            except Exception as e:
+                logger.warning(f"거리 메트릭 검증 실패: {e}")
+
             return True
             
         except Exception as e:
@@ -367,7 +380,7 @@ class RAGTool:
             try:
                 # 벡터 DB가 없으면 자동 구축 시도
                 self._build_vectorstore_if_needed()
-                
+
                 # 기존 벡터 DB 로드 또는 새로 구축된 DB 사용
                 if self.chroma_db_path.exists() and any(self.chroma_db_path.iterdir()):
                     if self._vectorstore is None:
@@ -375,12 +388,22 @@ class RAGTool:
                             persist_directory=str(self.chroma_db_path),
                             embedding_function=self.embeddings
                         )
+
+                    # 진단: ChromaDB distance 함수 확인
+                    try:
+                        collection = self._vectorstore._collection
+                        metadata = collection.metadata
+                        distance_function = metadata.get('hnsw:space', 'unknown')
+                        logger.info(f"ChromaDB distance 함수: {distance_function}")
+                    except Exception as e:
+                        logger.warning(f" Distance 함수 확인 실패: {e}")
+
                     logger.info("벡터 DB 로드 완료")
                 else:
                     logger.warning("벡터 DB가 아직 구축되지 않았습니다.")
             except Exception as e:
                 logger.error(f"벡터 스토어 로드 실패: {e}")
-        
+
         return self._vectorstore
 
     def _tokenize(self, text: str) -> List[str]:
@@ -514,9 +537,9 @@ class RAGTool:
             # 지식베이스 문서 수 확인
             try:
                 total_docs = self.vectorstore._collection.count()
-                print(f"📚 지식베이스: 총 {total_docs}개 문서 청크")
-            except:
-                print("⚠️ 지식베이스 문서 수 확인 실패")
+                logger.info(f"지식베이스: 총 {total_docs}개 문서 청크")
+            except Exception as e:
+                logger.warning(f"지식베이스 문서 수 확인 실패: {e}")
 
             # 키워드와 원본 쿼리 모두로 검색하여 더 많은 결과 확보
             # 키워드가 원본과 다르면 두 번 검색, 같으면 한 번만 검색
@@ -526,7 +549,7 @@ class RAGTool:
 
             # 1. 키워드로 검색
             keyword_docs = self.vectorstore.similarity_search_with_score(keyword_query, k=k * 3)
-            print(f"🔍 키워드 '{keyword_query}' 검색: {len(keyword_docs)}개 결과")
+            logger.info(f"키워드 '{keyword_query}' 검색: {len(keyword_docs)}개 결과")
 
             for doc, score in keyword_docs:
                 doc_id = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
@@ -550,12 +573,12 @@ class RAGTool:
             docs_with_scores = all_docs_with_scores[:k * 3]  # 상위 k*3개만 사용
 
             # 상위 5개 결과의 실제 점수 출력 (임계값 필터링 전)
-            print(f"📊 상위 {min(5, len(docs_with_scores))}개 문서 (필터링 전):")
+            logger.debug(f"상위 {min(5, len(docs_with_scores))}개 문서 (필터링 전):")
             for idx, (doc, distance) in enumerate(docs_with_scores[:5]):
                 similarity = 1.0 - distance if distance <= 2.0 else max(0.0, 1.0 - (distance / 2.0))
                 filename = doc.metadata.get('filename', 'unknown')
                 preview = doc.page_content[:50].replace('\n', ' ')
-                print(f"  #{idx+1}: {filename} (거리: {distance:.4f}, 유사도: {similarity:.4f}) - {preview}...")
+                logger.debug(f"  #{idx+1}: {filename} (거리: {distance:.4f}, 유사도: {similarity:.4f}) - {preview}...")
 
             filtered_docs = []
             seen_keys = set()  # 중복 제거용 (source + chunk_index 조합)
@@ -604,19 +627,19 @@ class RAGTool:
 
             if not filtered_docs:
                 logger.warning(
-                    f"❌ 임계값 {similarity_threshold} 미만: "
+                    f"임계값 {similarity_threshold} 미만: "
                     f"{len(docs_with_scores)}개 결과 모두 제외됨"
                 )
                 # 빈 결과도 캐싱 (불필요한 재검색 방지, TTL은 짧게)
                 cache_manager.set("rag", cache_content, [], ttl=3600)  # 1시간
                 return []
 
-            print(f"✅ 필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
+            logger.info(f"필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
 
             # 임계값을 넘긴 문서들의 유사도 로깅
-            print(f"📚 최종 결과:")
+            logger.info(f"최종 결과: {len(filtered_docs)}개")
             for idx, doc in enumerate(filtered_docs[:5]):  # 상위 5개만 출력
-                print(f"  #{idx+1}: {doc['filename']} (유사도: {doc['similarity']:.3f})")
+                logger.info(f"  #{idx+1}: {doc['filename']} (유사도: {doc['similarity']:.3f})")
 
             # 검색 결과 캐싱 (24시간)
             cache_manager.set("rag", cache_content, filtered_docs)
@@ -666,15 +689,23 @@ class RAGTool:
             # 지식베이스 문서 수 확인
             try:
                 total_docs = self.vectorstore._collection.count()
-                print(f"📚 지식베이스: 총 {total_docs}개 문서 청크")
-            except:
-                print("⚠️ 지식베이스 문서 수 확인 실패")
+                logger.info(f"지식베이스: 총 {total_docs}개 문서 청크")
+            except Exception as e:
+                logger.warning(f"지식베이스 문서 수 확인 실패: {e}")
 
             # 1. 벡터 검색
             vector_results = {}
             if self.vectorstore is not None:
                 vector_docs = self.vectorstore.similarity_search_with_score(query, k=k * 3)
                 print(f"🔍 벡터 검색: {len(vector_docs)}개 결과")
+
+                # 진단: 실제 distance 값 확인
+                if vector_docs:
+                    print(f"🔬 벡터 거리 진단 (상위 3개):")
+                    for idx, (doc, distance) in enumerate(vector_docs[:3]):
+                        filename = doc.metadata.get('filename', 'unknown')
+                        print(f"  - {filename}: distance={distance:.4f}")
+
                 for doc, distance in vector_docs:
                     doc_key = (doc.metadata.get('source', ''), doc.metadata.get('chunk_index', 0))
                     # 거리를 유사도로 변환 (0~1 범위)
@@ -738,12 +769,12 @@ class RAGTool:
             )
 
             # 상위 5개 결과의 실제 점수 출력 (임계값 필터링 전)
-            print(f"📊 상위 {min(5, len(sorted_results))}개 문서 (필터링 전):")
+            logger.debug(f"상위 {min(5, len(sorted_results))}개 문서 (필터링 전):")
             for idx, (doc_key, result) in enumerate(sorted_results[:5]):
                 doc = result['doc']
                 filename = doc.metadata.get('filename', 'unknown')
                 preview = doc.page_content[:50].replace('\n', ' ')
-                print(
+                logger.debug(
                     f"  #{idx+1}: {filename} "
                     f"(hybrid: {result['hybrid_score']:.3f} = "
                     f"vector: {result['vector_score']:.3f} + bm25: {result['bm25_score']:.3f}) "
@@ -778,18 +809,18 @@ class RAGTool:
 
             if not filtered_docs:
                 logger.warning(
-                    f"❌ 임계값 {similarity_threshold} 미만: "
+                    f"임계값 {similarity_threshold} 미만: "
                     f"{len(sorted_results)}개 결과 모두 제외됨"
                 )
                 cache_manager.set("rag", cache_content, [], ttl=3600)
                 return []
 
-            print(f"✅ 필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
+            logger.info(f"필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
 
             # 최종 결과 로깅
-            print(f"📚 최종 결과 (하이브리드, alpha={alpha}):")
+            logger.info(f"최종 결과 (하이브리드, alpha={alpha}): {len(filtered_docs)}개")
             for idx, doc in enumerate(filtered_docs[:5]):  # 상위 5개만 출력
-                print(
+                logger.info(
                     f"  #{idx+1}: {doc['filename']} "
                     f"(hybrid: {doc['similarity']:.3f} = vector: {doc['vector_score']:.3f} + bm25: {doc['bm25_score']:.3f})"
                 )

@@ -32,7 +32,8 @@ from react_agent.cache_manager import get_cache_manager
 # Ensure .env is loaded so ANTHROPIC_API_KEY is available
 load_dotenv()
 
-# ==================== 병렬 도구 호출 시스템 ====================
+# 병렬 도구 호출
+
 
 async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str, Any]:
     """질문을 분석하고 필요한 도구들을 병렬로 미리 실행
@@ -55,7 +56,7 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
     cache_manager = get_cache_manager()
     faq_answer = cache_manager.get_faq(last_human_message)
     if faq_answer:
-        print(f"✅ FAQ 캐시 히트")
+        print(f"FAQ 캐시 히트")
         return {
             "messages": [AIMessage(content=faq_answer)],
             "prefetched_context": {"source": "faq_cache"}

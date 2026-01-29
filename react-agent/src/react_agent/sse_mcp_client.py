@@ -1,4 +1,4 @@
-"""SSE MCP 클라이언트 구현 - 완전한 재연결 + 세션 유지 버전"""
+"""SSE MCP 클라이언트 구현 - 재연결 + 세션 유지"""
 
 import json
 import httpx
