@@ -11,6 +11,7 @@ from langchain_core.runnables import RunnableConfig
 
 from react_agent.state import State
 from react_agent.configuration import Configuration
+from react_agent.utils import detect_and_convert_mermaid
 from .config import AgentRole, get_agent_config
 from .prompts import get_agent_prompt
 
@@ -139,6 +140,17 @@ async def simple_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
         tool_names = [tc.get('name', 'unknown') for tc in response.tool_calls]
         logger.info(f"[Simple Agent] 도구 호출: {', '.join(tool_names)}")
 
+    # Mermaid 코드 블록을 이미지로 자동 변환
+    if response.content and isinstance(response.content, str):
+        converted_content = detect_and_convert_mermaid(response.content)
+        if converted_content != response.content:
+            response = AIMessage(
+                id=response.id,
+                content=converted_content,
+                tool_calls=response.tool_calls if hasattr(response, 'tool_calls') else [],
+                additional_kwargs=response.additional_kwargs,
+            )
+
     return {
         "messages": [response],
         "agent_used": "simple"
@@ -205,6 +217,17 @@ async def expert_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
     if response.tool_calls:
         tool_names = [tc.get('name', 'unknown') for tc in response.tool_calls]
         logger.info(f"[Expert: {agent_config.name}] 도구 호출: {', '.join(tool_names)}")
+
+    # Mermaid 코드 블록을 이미지로 자동 변환
+    if response.content and isinstance(response.content, str):
+        converted_content = detect_and_convert_mermaid(response.content)
+        if converted_content != response.content:
+            response = AIMessage(
+                id=response.id,
+                content=converted_content,
+                tool_calls=response.tool_calls if hasattr(response, 'tool_calls') else [],
+                additional_kwargs=response.additional_kwargs,
+            )
 
     return {
         "messages": [response],
