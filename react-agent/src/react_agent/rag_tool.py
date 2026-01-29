@@ -8,7 +8,7 @@ from typing import Optional, List, Dict, Any
 from react_agent.cache_manager import get_cache_manager
 
 try:
-    from langchain_community.vectorstores import Chroma
+    from langchain_chroma import Chroma
     from langchain_community.embeddings import HuggingFaceEmbeddings
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_core.documents import Document
@@ -330,13 +330,18 @@ class RAGTool:
 
             # 거리 메트릭 검증
             try:
-                actual_metric = self._vectorstore._collection.metadata.get('hnsw:space', 'unknown')
-                logger.info(f"✓ 벡터 DB 구축 완료: {len(documents)}개 문서")
-                logger.info(f"  - Distance metric: {actual_metric}")
-                logger.info(f"  - Embeddings normalized: True")
-                logger.info(f"  - HNSW optimized: M=16, ef=50")
-                if actual_metric != 'cosine':
-                    logger.warning(f"예상 메트릭(cosine)과 실제({actual_metric})가 다릅니다!")
+                collection = self._vectorstore._collection
+                if collection and hasattr(collection, 'metadata') and collection.metadata:
+                    actual_metric = collection.metadata.get('hnsw:space', 'unknown')
+                    logger.info(f"✓ 벡터 DB 구축 완료: {len(documents)}개 문서")
+                    logger.info(f"  - Distance metric: {actual_metric}")
+                    logger.info(f"  - Embeddings normalized: True")
+                    logger.info(f"  - HNSW optimized: M=16, ef=50")
+                    if actual_metric != 'cosine':
+                        logger.warning(f"예상 메트릭(cosine)과 실제({actual_metric})가 다릅니다!")
+                else:
+                    logger.info(f"✓ 벡터 DB 구축 완료: {len(documents)}개 문서")
+                    logger.info(f"  - HNSW optimized: M=16, ef=50")
             except Exception as e:
                 logger.warning(f"거리 메트릭 검증 실패: {e}")
 
@@ -363,9 +368,12 @@ class RAGTool:
                     # 진단: ChromaDB distance 함수 확인
                     try:
                         collection = self._vectorstore._collection
-                        metadata = collection.metadata
-                        distance_function = metadata.get('hnsw:space', 'unknown')
-                        logger.info(f"ChromaDB distance 함수: {distance_function}")
+                        if collection and hasattr(collection, 'metadata') and collection.metadata:
+                            metadata = collection.metadata
+                            distance_function = metadata.get('hnsw:space', 'unknown')
+                            logger.info(f"ChromaDB distance 함수: {distance_function}")
+                        else:
+                            logger.info("ChromaDB distance 함수: 확인 불가 (metadata 없음)")
                     except Exception as e:
                         logger.warning(f"Distance 함수 확인 실패: {e}")
 
