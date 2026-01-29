@@ -32,6 +32,11 @@ VISUALIZATION_GUIDE = """
 3. **테이블** (표 형식 데이터) → **AG Grid 사용** 📋
 4. **지도/위치** (지리 데이터, 위치 정보) → **Map 사용** 🗺️
 
+**⚠️ CRITICAL - Markdown 표 사용 금지:**
+- Markdown 표 (`| 열1 | 열2 |` 형식)는 절대 사용하지 마세요!
+- 모든 표 데이터는 반드시 **```aggrid** 블록을 사용하세요
+- 2개 이상의 행이 있는 데이터 = AG Grid 필수!
+
 ---
 
 **📊 AG Charts 사용법 (데이터 시각화):**
@@ -95,10 +100,11 @@ VISUALIZATION_GUIDE = """
 
 ---
 
-**📋 AG Grid 사용법 (테이블):**
-- **사용 시점**: 표 형식으로 데이터를 보여줄 때
+**📋 AG Grid 사용법 (테이블) - REQUIRED FOR ALL TABLES:**
+- **사용 시점**: 2개 이상의 행이 있는 표 데이터를 보여줄 때 (필수!)
 - **코드 블록**: ```aggrid 로 시작
 - **형식**: JSON 설정 (columnDefs, rowData)
+- **중요**: Markdown 표 대신 반드시 AG Grid를 사용하세요!
 
 **AG Grid 예시:**
 ```aggrid
@@ -209,8 +215,12 @@ flowchart TD
 **시각화 선택 기준:**
 - **숫자/통계** → AG Charts (pie, bar, line)
 - **절차/프로세스** → Mermaid (flowchart)
-- **테이블** → AG Grid
+- **테이블 (2행 이상)** → AG Grid (Markdown 표 ❌ 금지!)
 - **위치/지리** → Map (scatterplot, path, hexagon)
+
+**⚠️ 다시 한 번 강조:**
+표 데이터가 있으면 반드시 ```aggrid 블록을 사용하세요.
+Markdown 표 (`| 열1 | 열2 |` 형식)는 절대 사용하지 마세요!
 """
 
 
