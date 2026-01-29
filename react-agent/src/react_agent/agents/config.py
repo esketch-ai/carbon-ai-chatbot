@@ -35,12 +35,12 @@ class AgentConfig:
 
 AGENT_REGISTRY = {
 
-    # 매니저 에이전트 
+    # 매니저 에이전트
     AgentRole.MANAGER: AgentConfig(
         role=AgentRole.MANAGER,
         name="매니저 에이전트",
         description="질문 복잡도 분석 및 에이전트 할당",
-        model="claude-sonnet-4-5",  # 정확한 판단 위해 Sonnet
+        model="claude-haiku-4-5",  # 빠른 라우팅을 위해 Haiku (속도 최적화)
         temperature=0.0,
         tools=[],  # 판단만 하고 도구 사용 안 함
         min_complexity="simple",
