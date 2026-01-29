@@ -471,7 +471,7 @@ class RAGTool:
             self._build_bm25_index()
         return self._bm25_index
 
-    def search_documents(self, query: str, k: int = 3, similarity_threshold: float = 0.5) -> List[Dict[str, Any]]:
+    def search_documents(self, query: str, k: int = 3, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
         """
         문서 검색 (코사인 유사도 기반)
 
@@ -571,7 +571,7 @@ class RAGTool:
         query: str,
         k: int = 3,
         alpha: float = 0.5,
-        similarity_threshold: float = 0.5
+        similarity_threshold: float = 0.7
     ) -> List[Dict[str, Any]]:
         """
         하이브리드 검색 (BM25 + 벡터 검색, RRF 사용)
