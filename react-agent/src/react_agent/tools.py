@@ -40,11 +40,12 @@ def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> di
     배출권 거래, 구매/판매 절차, NET-Z 플랫폼 사용법 등에 대한 질문에 사용하세요.
 
     **검색 방식**:
-    - **하이브리드 검색 (기본)**: BM25 키워드 검색 + 벡터 의미 검색을 결합하여 정확도 향상
+    - **하이브리드 검색 (기본, RRF)**: BM25 + 벡터 검색을 Reciprocal Rank Fusion으로 결합
       - BM25: 키워드 매칭 기반 검색 (정확한 용어 검색에 강함)
       - 벡터: 의미 기반 검색 (문맥 이해에 강함)
-      - alpha=0.5: 두 방식을 50:50으로 결합
+      - RRF: 순위 기반 융합으로 점수 스케일에 robust하게 결합
     - **벡터 검색 전용**: use_hybrid=False로 설정 시 기존 벡터 검색만 사용
+    - **프로덕션 품질**: 임계값 0.7 이상의 고품질 결과만 반환 (정확도 우선)
     - 쿼리는 최소한의 정규화(공백 정리)만 수행됩니다.
     - 중복된 문서는 자동으로 제거됩니다.
 
@@ -67,18 +68,20 @@ def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> di
     rag_tool = get_rag_tool()
 
     if use_hybrid:
-        # 하이브리드 검색 (BM25 + 벡터)
+        # 하이브리드 검색 (RRF - Reciprocal Rank Fusion)
+        # alpha < 0: RRF 방식 (순위 기반 융합, 더 robust)
+        # alpha >= 0: 가중 평균 방식 (alpha * vector + (1-alpha) * bm25)
         results = rag_tool.search_documents_hybrid(
             query,
             k=k,
-            alpha=0.5,  # 벡터 50% + BM25 50%
-            similarity_threshold=0.3  # 임계값 낮춤 (더 많은 결과 포함)
+            alpha=-1,  # RRF 방식 활성화
+            similarity_threshold=0.7  # 프로덕션 품질: 정확도 우선
         )
-        threshold_msg = "하이브리드 점수 0.5"
+        threshold_msg = "하이브리드 점수 0.7"
     else:
         # 벡터 검색 전용
-        results = rag_tool.search_documents(query, k=k, similarity_threshold=0.3)
-        threshold_msg = "유사도 0.5"
+        results = rag_tool.search_documents(query, k=k, similarity_threshold=0.7)
+        threshold_msg = "유사도 0.7"
 
     if not results:
         return {

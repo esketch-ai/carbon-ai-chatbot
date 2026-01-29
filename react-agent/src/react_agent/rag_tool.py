@@ -61,7 +61,6 @@ class RAGTool:
         
         # 임베딩 모델 초기화
         try:
-            import os
             # HF_TOKEN 설정 (있으면 사용, 없으면 무시)
             hf_token = os.environ.get("HF_TOKEN")
             if hf_token:
@@ -716,27 +715,75 @@ class RAGTool:
                         'score': normalized_scores[idx]
                     }
 
-            # 3. 점수 결합 (alpha 가중치)
+            # 3. 점수 결합 (RRF - Reciprocal Rank Fusion 또는 가중 평균)
             combined_results = {}
             all_doc_keys = set(vector_results.keys()) | set(bm25_results.keys())
 
-            for doc_key in all_doc_keys:
-                vector_score = vector_results.get(doc_key, {}).get('score', 0.0)
-                bm25_score = bm25_results.get(doc_key, {}).get('score', 0.0)
+            # RRF 방식: 순위 기반 융합 (더 robust)
+            # 참고: alpha < 0 이면 RRF 사용, alpha >= 0 이면 가중 평균 사용
+            use_rrf = alpha < 0  # 음수 alpha는 RRF 활성화 신호
 
-                # 하이브리드 점수 계산
-                hybrid_score = alpha * vector_score + (1.0 - alpha) * bm25_score
+            if use_rrf:
+                # RRF 방식: 순위 기반 점수 계산
+                k_rrf = 60  # RRF 상수 (일반적으로 60이 최적)
 
-                # 문서 객체 가져오기 (벡터 우선, 없으면 BM25)
-                doc = vector_results.get(doc_key, bm25_results.get(doc_key, {})).get('doc')
+                # Vector 결과 순위 생성
+                vector_sorted = sorted(
+                    vector_results.items(),
+                    key=lambda x: x[1]['score'],
+                    reverse=True
+                )
+                vector_ranks = {doc_key: rank for rank, (doc_key, _) in enumerate(vector_sorted)}
 
-                if doc is not None:
-                    combined_results[doc_key] = {
-                        'doc': doc,
-                        'hybrid_score': hybrid_score,
-                        'vector_score': vector_score,
-                        'bm25_score': bm25_score
-                    }
+                # BM25 결과 순위 생성
+                bm25_sorted = sorted(
+                    bm25_results.items(),
+                    key=lambda x: x[1]['score'],
+                    reverse=True
+                )
+                bm25_ranks = {doc_key: rank for rank, (doc_key, _) in enumerate(bm25_sorted)}
+
+                # RRF 점수 계산
+                for doc_key in all_doc_keys:
+                    vector_rank = vector_ranks.get(doc_key, len(vector_results))
+                    bm25_rank = bm25_ranks.get(doc_key, len(bm25_results))
+
+                    # RRF formula: 1/(k + rank)
+                    rrf_score = 1.0 / (k_rrf + vector_rank + 1) + 1.0 / (k_rrf + bm25_rank + 1)
+
+                    # 원본 점수 (디버깅/로깅용)
+                    vector_score = vector_results.get(doc_key, {}).get('score', 0.0)
+                    bm25_score = bm25_results.get(doc_key, {}).get('score', 0.0)
+
+                    # 문서 객체 가져오기
+                    doc = vector_results.get(doc_key, bm25_results.get(doc_key, {})).get('doc')
+
+                    if doc is not None:
+                        combined_results[doc_key] = {
+                            'doc': doc,
+                            'hybrid_score': rrf_score,
+                            'vector_score': vector_score,
+                            'bm25_score': bm25_score
+                        }
+            else:
+                # 가중 평균 방식 (기존)
+                for doc_key in all_doc_keys:
+                    vector_score = vector_results.get(doc_key, {}).get('score', 0.0)
+                    bm25_score = bm25_results.get(doc_key, {}).get('score', 0.0)
+
+                    # 하이브리드 점수 계산
+                    hybrid_score = alpha * vector_score + (1.0 - alpha) * bm25_score
+
+                    # 문서 객체 가져오기 (벡터 우선, 없으면 BM25)
+                    doc = vector_results.get(doc_key, bm25_results.get(doc_key, {})).get('doc')
+
+                    if doc is not None:
+                        combined_results[doc_key] = {
+                            'doc': doc,
+                            'hybrid_score': hybrid_score,
+                            'vector_score': vector_score,
+                            'bm25_score': bm25_score
+                        }
 
             # 4. 하이브리드 점수로 정렬
             sorted_results = sorted(
