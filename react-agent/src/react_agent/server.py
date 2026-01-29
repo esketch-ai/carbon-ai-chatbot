@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 import uvicorn
 from dotenv import load_dotenv
 
-from react_agent.graph import graph   # 기존 langgraph 그래프 임포트
+from react_agent.graph_multi import graph   # 멀티 에이전트 그래프 임포트
 from react_agent.configuration import Configuration  # 기존 설정 클래스
 from langchain_core.messages import AIMessage, HumanMessage   # 랭체인 메세지 타입 임포트
 from react_agent.rag_tool import get_rag_tool  # RAG 도구

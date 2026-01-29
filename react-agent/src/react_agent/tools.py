@@ -19,6 +19,7 @@ from react_agent.sse_mcp_client import SSEMCPClient
 logger = logging.getLogger(__name__)
 
 
+@tool
 async def search(query: str) -> Optional[dict[str, Any]]:
     """Search for general web results.
 

@@ -37,7 +37,7 @@ class InputState:
     updating by ID to maintain an "append-only" state unless a message with the same ID is provided.
     """
 
-
+# 기본 메세지 히스토리
 @dataclass
 class State(InputState):
     """Represents the complete state of the agent, extending InputState with additional attributes.
@@ -53,7 +53,7 @@ class State(InputState):
     It is set to 'True' when the step count reaches recursion_limit - 1.
     """
 
-    # 대화 맥락 유지를 위한 필드
+    # 대화 맥락 유지를 위한 필드 (주제, 사용자 유형 등)
     conversation_context: dict = field(default_factory=dict)
     """
     대화 이력에서 추출한 맥락 정보
@@ -65,7 +65,8 @@ class State(InputState):
     - conversation_stage: 대화 단계 (초기/진행/심화)
     """
 
-    # 🚀 병렬 도구 호출 결과 캐시
+    # 병렬 도구 호출 결과 캐시
+    # 미리 실행된 도구 결과 (RAG, 웹 검색)
     prefetched_context: dict = field(default_factory=dict)
     """
     질문 분석 후 미리 실행된 도구들의 결과
@@ -74,6 +75,25 @@ class State(InputState):
     - RAG: 지식베이스 검색 결과
     - MCP_*: MCP 도구 호출 결과
     - source: 결과 출처 (예: "faq_cache")
+    """
+
+    # 🎯 멀티 에이전트: 매니저 결정
+    manager_decision: dict = field(default_factory=dict)
+    """
+    매니저 에이전트의 복잡도 분석 및 라우팅 결정
+
+    포함 내용:
+    - complexity: "simple" | "medium" | "complex"
+    - assigned_agent: "simple" | "carbon_expert" | "regulation_expert" | "support_expert"
+    - reasoning: 선택 이유
+    - confidence: 판단 신뢰도 (0.0-1.0)
+    """
+
+    # 🎯 멀티 에이전트: 사용된 에이전트
+    agent_used: str = field(default="")
+    """
+    실제로 답변을 생성한 에이전트 이름
+    추적 및 분석용
     """
 
     # Additional attributes can be added here as needed.

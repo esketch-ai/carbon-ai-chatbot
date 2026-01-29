@@ -1,1 +1,8 @@
 .claude/
+
+# ChromaDB backups
+chroma_db_backup/
+react-agent/chroma_db_backup_l2/
+
+# Test results
+test_results.txt
