@@ -242,7 +242,7 @@ const MarkdownTextImpl: FC<{
       ...props
     }: {
       className?: string;
-      children: React.ReactNode;
+      children?: React.ReactNode;
     }) => {
       const match = /language-(\w+)/.exec(className || "");
 
