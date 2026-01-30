@@ -1,0 +1,72 @@
+[
+  {
+    "longitude": 126.9780,
+    "latitude": 37.5665,
+    "name": "시청역 카페",
+    "radius": 150,
+    "type": "cafe"
+  },
+  {
+    "longitude": 127.0276,
+    "latitude": 37.4979,
+    "name": "강남역 스타벅스",
+    "radius": 200,
+    "type": "cafe"
+  },
+  {
+    "longitude": 126.9849,
+    "latitude": 37.5636,
+    "name": "명동 카페거리",
+    "radius": 180,
+    "type": "cafe"
+  },
+  {
+    "longitude": 126.9239,
+    "latitude": 37.5572,
+    "name": "홍대 카페",
+    "radius": 220,
+    "type": "cafe"
+  },
+  {
+    "longitude": 127.0495,
+    "latitude": 37.5142,
+    "name": "코엑스 카페",
+    "radius": 190,
+    "type": "cafe"
+  },
+  {
+    "longitude": 126.9910,
+    "latitude": 37.5511,
+    "name": "경복궁 근처 카페",
+    "radius": 160,
+    "type": "cafe"
+  },
+  {
+    "longitude": 127.0029,
+    "latitude": 37.5662,
+    "name": "동대문 카페",
+    "radius": 170,
+    "type": "cafe"
+  },
+  {
+    "longitude": 126.9401,
+    "latitude": 37.5509,
+    "name": "서강대 카페거리",
+    "radius": 200,
+    "type": "cafe"
+  },
+  {
+    "longitude": 127.0841,
+    "latitude": 37.5443,
+    "name": "건대입구 카페",
+    "radius": 185,
+    "type": "cafe"
+  },
+  {
+    "longitude": 126.9944,
+    "latitude": 37.5347,
+    "name": "이태원 카페",
+    "radius": 195,
+    "type": "cafe"
+  }
+]
