@@ -260,14 +260,27 @@ async def stream_agent(request: ChatRequest):
         }
 
         async def generate():
-            """Generate streaming response."""
+            """Generate streaming response with hybrid mode."""
             try:
-                async for chunk in graph.astream(input_data, config=config):
-                    # Extract message content from chunk
-                    if "messages" in chunk and len(chunk["messages"]) > 0:
-                        message = chunk["messages"][-1]
-                        if hasattr(message, 'content'):
-                            yield f"data: {message.content}\n\n"
+                # Use hybrid streaming for real-time tokens
+                async for event in graph.astream(
+                    input_data,
+                    config=config,
+                    stream_mode=["messages", "values"]
+                ):
+                    # Unpack (mode, chunk) tuple
+                    if isinstance(event, tuple) and len(event) == 2:
+                        mode, chunk = event
+
+                        if mode == "messages":
+                            # Messages mode: extract message content (tokens)
+                            if isinstance(chunk, tuple) and len(chunk) == 2:
+                                msg, metadata = chunk
+                                if hasattr(msg, 'content') and msg.content:
+                                    yield f"data: {msg.content}\n\n"
+                            elif hasattr(chunk, 'content') and chunk.content:
+                                yield f"data: {chunk.content}\n\n"
+                        # Skip values events in simple endpoint
 
                 yield "data: [DONE]\n\n"
 
@@ -471,19 +484,51 @@ async def create_run(thread_id: str, request: Request):
         }
 
         if stream:
-            # Streaming response
+            # Streaming response with hybrid mode
             async def generate():
-                """Generate streaming response in LangGraph Cloud format."""
+                """Generate streaming response in LangGraph Cloud format with hybrid mode."""
                 try:
-                    async for chunk in graph.astream(graph_input, config=graph_config):
-                        # Serialize chunk to JSON-serializable format
-                        serialized_chunk = serialize_chunk(chunk)
-                        # Format as LangGraph Cloud stream event
-                        event = {
-                            "event": "values",
-                            "data": serialized_chunk
-                        }
-                        yield f"data: {json.dumps(event)}\n\n"
+                    # Use hybrid streaming for real-time tokens + node updates
+                    async for event in graph.astream(
+                        graph_input,
+                        config=graph_config,
+                        stream_mode=["messages", "values"]
+                    ):
+                        # Unpack (mode, chunk) tuple
+                        if isinstance(event, tuple) and len(event) == 2:
+                            mode, chunk = event
+
+                            if mode == "messages":
+                                # Messages mode: (message, metadata) tuple
+                                if isinstance(chunk, tuple) and len(chunk) == 2:
+                                    msg, metadata = chunk
+                                    serialized_data = serialize_chunk([msg])
+                                else:
+                                    serialized_data = serialize_chunk([chunk])
+
+                                stream_event = {
+                                    "event": "messages",
+                                    "data": serialized_data
+                                }
+                            elif mode == "values":
+                                # Values mode: full state
+                                serialized_data = serialize_chunk(chunk)
+                                stream_event = {
+                                    "event": "values",
+                                    "data": serialized_data
+                                }
+                            else:
+                                continue
+
+                            yield f"data: {json.dumps(stream_event)}\n\n"
+                        else:
+                            # Fallback: single mode
+                            serialized_chunk = serialize_chunk(event)
+                            stream_event = {
+                                "event": "values",
+                                "data": serialized_chunk
+                            }
+                            yield f"data: {json.dumps(stream_event)}\n\n"
 
                     # Send end event
                     end_event = {
@@ -492,6 +537,8 @@ async def create_run(thread_id: str, request: Request):
                     yield f"data: {json.dumps(end_event)}\n\n"
 
                 except Exception as e:
+                    import traceback
+                    traceback.print_exc()
                     error_event = {
                         "event": "error",
                         "data": {"error": str(e)}
@@ -569,29 +616,63 @@ async def create_run_stream(thread_id: str, request: Request):
             "messages": [HumanMessage(content=user_message)]
         }
 
-        # Streaming response using standard astream
+        # Streaming response with hybrid mode (messages + values)
+        # Reference: https://docs.langchain.com/oss/python/langgraph/streaming
         async def generate():
-            """Generate streaming response."""
+            """Generate streaming response with real-time tokens."""
             import asyncio
             try:
                 chunk_count = 0
 
-                # Use "values" mode - returns complete state after each node
-                # This matches frontend streamMode: ["values"]
-                async for chunk in graph.astream(graph_input, config=graph_config, stream_mode="values"):
+                # HYBRID STREAMING: messages (real-time tokens) + values (node updates)
+                # When using multiple modes, astream returns (mode, chunk) tuples
+                async for event in graph.astream(
+                    graph_input,
+                    config=graph_config,
+                    stream_mode=["messages", "values"]
+                ):
                     chunk_count += 1
 
-                    # Serialize chunk to JSON-serializable format
-                    serialized_chunk = serialize_chunk(chunk)
+                    # Unpack (mode, chunk) tuple
+                    if isinstance(event, tuple) and len(event) == 2:
+                        mode, chunk = event
 
-                    # Send as values event (SDK understands this)
-                    stream_event = {
-                        "event": "values",
-                        "data": serialized_chunk
-                    }
+                        if mode == "messages":
+                            # Messages mode returns (message, metadata) tuple
+                            if isinstance(chunk, tuple) and len(chunk) == 2:
+                                msg, metadata = chunk
+                                # Stream only message content (tokens)
+                                serialized_data = serialize_chunk([msg])
+                            else:
+                                # Fallback: chunk is already a message
+                                serialized_data = serialize_chunk([chunk])
 
-                    event_json = json.dumps(stream_event, ensure_ascii=False)
-                    yield f"data: {event_json}\n\n"
+                            stream_event = {
+                                "event": "messages",
+                                "data": serialized_data
+                            }
+                        elif mode == "values":
+                            # Values mode returns full state
+                            serialized_data = serialize_chunk(chunk)
+                            stream_event = {
+                                "event": "values",
+                                "data": serialized_data
+                            }
+                        else:
+                            # Unknown mode - skip
+                            continue
+
+                        event_json = json.dumps(stream_event, ensure_ascii=False)
+                        yield f"data: {event_json}\n\n"
+                    else:
+                        # Fallback for single mode (backward compatibility)
+                        serialized_chunk = serialize_chunk(event)
+                        stream_event = {
+                            "event": "values",
+                            "data": serialized_chunk
+                        }
+                        event_json = json.dumps(stream_event, ensure_ascii=False)
+                        yield f"data: {event_json}\n\n"
 
                 # Send end event
                 end_event = {
@@ -604,6 +685,8 @@ async def create_run_stream(thread_id: str, request: Request):
                 raise
             except Exception as e:
                 print(f"❌ 스트리밍 오류: {e}")
+                import traceback
+                traceback.print_exc()
                 error_event = {
                     "event": "error",
                     "data": {"error": str(e)}
