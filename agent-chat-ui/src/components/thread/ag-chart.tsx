@@ -25,7 +25,7 @@ export function AGChart({ config, className }: AGChartProps) {
 
       if (typeof config === "string") {
         // AI가 생성한 JSON은 비표준일 수 있으므로 전처리
-        let sanitized = config
+        const sanitized = config
           // 쉼표가 포함된 숫자 (예: 80,000 → 80000)
           .replace(/:\s*(\d{1,3}(,\d{3})+)(\s*[,}\]])/g, (_, num, __, tail) => {
             return `: ${num.replace(/,/g, "")}${tail}`;
