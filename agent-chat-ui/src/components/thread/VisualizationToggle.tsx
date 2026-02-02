@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, ReactNode } from "react";
+import { useState, useEffect, useRef, ReactNode } from "react";
 import { Code2, Eye, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SyntaxHighlighter } from "@/components/thread/syntax-highlighter";
@@ -20,7 +20,17 @@ export function VisualizationToggle({
   isStreaming = false,
   className,
 }: VisualizationToggleProps) {
-  const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
+  // 기본 탭: 코드. 시각화는 준비 완료 후 전환 가능.
+  const [activeTab, setActiveTab] = useState<"preview" | "code">("code");
+  const hasBeenReady = useRef(false);
+
+  // 스트리밍 완료 시 자동으로 미리보기 탭으로 전환 (최초 1회)
+  useEffect(() => {
+    if (!isStreaming && !hasBeenReady.current) {
+      hasBeenReady.current = true;
+      setActiveTab("preview");
+    }
+  }, [isStreaming]);
 
   return (
     <div className={cn("relative", className)}>
@@ -65,13 +75,8 @@ export function VisualizationToggle({
 
       {/* Content */}
       <div className="relative">
-        {activeTab === "preview" ? (
-          <div
-            className={cn(
-              "transition-opacity duration-200",
-              isStreaming && "opacity-50 pointer-events-none"
-            )}
-          >
+        {activeTab === "preview" && !isStreaming ? (
+          <div className="transition-opacity duration-200">
             {visualization}
           </div>
         ) : (
