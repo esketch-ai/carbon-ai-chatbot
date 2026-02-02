@@ -3,5 +3,5 @@
   "outputDirectory": ".next",
   "framework": "nextjs",
   "devCommand": "npm run dev",
-  "installCommand": "npm install"
+  "installCommand": "pnpm install"
 }
