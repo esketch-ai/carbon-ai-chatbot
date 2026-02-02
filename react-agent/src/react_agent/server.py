@@ -81,6 +81,43 @@ def message_to_dict(msg):  # 랭체인 메세지를 json으로 변환 -> 프론�
     return result
 
 
+def is_streamable_text_message(msg) -> bool:
+    """Check if a message chunk should be streamed as real-time tokens.
+
+    Only AI text content is streamed token-by-token.
+    Tool calls, tool results, and human messages are handled via values (node-level).
+    """
+    # Must be an AI message (AIMessage or AIMessageChunk)
+    msg_type = getattr(msg, 'type', None)
+    if msg_type != 'ai' and msg_type != 'AIMessageChunk':
+        # Also check class name for chunk types
+        class_name = type(msg).__name__
+        if 'AI' not in class_name:
+            return False
+
+    # Skip if this is purely a tool call (no text content)
+    content = getattr(msg, 'content', '')
+    tool_calls = getattr(msg, 'tool_calls', [])
+    tool_call_chunks = getattr(msg, 'tool_call_chunks', [])
+
+    has_text = bool(content) if isinstance(content, str) else False
+    if isinstance(content, list):
+        has_text = any(
+            (isinstance(c, str) and c) or
+            (isinstance(c, dict) and c.get('type') == 'text' and c.get('text'))
+            for c in content
+        )
+
+    has_tool_calls = bool(tool_calls) or bool(tool_call_chunks)
+
+    # Stream only when there's actual text content
+    # If it's purely a tool call with no text, let values handle it
+    if not has_text and has_tool_calls:
+        return False
+
+    return has_text
+
+
 def serialize_chunk(chunk):
     """Recursively serialize a chunk to JSON-serializable format."""
     if isinstance(chunk, dict):
@@ -485,69 +522,72 @@ async def create_run(thread_id: str, request: Request):
 
         if stream:
             # Streaming response with hybrid mode
+            # Uses standard SSE format matching LangGraph Cloud protocol
             async def generate():
-                """Generate streaming response in LangGraph Cloud format with hybrid mode."""
+                """Generate streaming response in LangGraph Cloud SSE format."""
                 try:
-                    # Use hybrid streaming for real-time tokens + node updates
+                    run_id = str(uuid.uuid4())
+
+                    # Send metadata event first
+                    metadata_payload = json.dumps({"run_id": run_id, "thread_id": thread_id}, ensure_ascii=False)
+                    yield f"event: metadata\ndata: {metadata_payload}\n\n"
+
                     async for event in graph.astream(
                         graph_input,
                         config=graph_config,
                         stream_mode=["messages", "values"]
                     ):
-                        # Unpack (mode, chunk) tuple
                         if isinstance(event, tuple) and len(event) == 2:
                             mode, chunk = event
 
                             if mode == "messages":
-                                # Messages mode: (message, metadata) tuple
+                                # Extract the raw message for filtering
+                                raw_msg = chunk[0] if isinstance(chunk, tuple) and len(chunk) == 2 else chunk
+
+                                # Only stream AI text tokens in real-time
+                                # Tool calls, tool results, etc. are handled by values mode
+                                if not is_streamable_text_message(raw_msg):
+                                    continue
+
                                 if isinstance(chunk, tuple) and len(chunk) == 2:
                                     msg, metadata = chunk
-                                    serialized_data = serialize_chunk([msg])
+                                    serialized_msg = serialize_chunk(msg)
+                                    serialized_metadata = serialize_chunk(metadata) if metadata else {}
                                 else:
-                                    serialized_data = serialize_chunk([chunk])
+                                    serialized_msg = serialize_chunk(chunk)
+                                    serialized_metadata = {}
 
-                                stream_event = {
-                                    "event": "messages",
-                                    "data": serialized_data
-                                }
+                                data_json = json.dumps([serialized_msg, serialized_metadata], ensure_ascii=False)
+                                yield f"event: messages\ndata: {data_json}\n\n"
+
                             elif mode == "values":
-                                # Values mode: full state
                                 serialized_data = serialize_chunk(chunk)
-                                stream_event = {
-                                    "event": "values",
-                                    "data": serialized_data
-                                }
+                                data_json = json.dumps(serialized_data, ensure_ascii=False)
+                                yield f"event: values\ndata: {data_json}\n\n"
+
                             else:
                                 continue
-
-                            yield f"data: {json.dumps(stream_event)}\n\n"
                         else:
-                            # Fallback: single mode
                             serialized_chunk = serialize_chunk(event)
-                            stream_event = {
-                                "event": "values",
-                                "data": serialized_chunk
-                            }
-                            yield f"data: {json.dumps(stream_event)}\n\n"
+                            data_json = json.dumps(serialized_chunk, ensure_ascii=False)
+                            yield f"event: values\ndata: {data_json}\n\n"
 
-                    # Send end event
-                    end_event = {
-                        "event": "end"
-                    }
-                    yield f"data: {json.dumps(end_event)}\n\n"
+                    yield f"event: end\ndata: \n\n"
 
                 except Exception as e:
                     import traceback
                     traceback.print_exc()
-                    error_event = {
-                        "event": "error",
-                        "data": {"error": str(e)}
-                    }
-                    yield f"data: {json.dumps(error_event)}\n\n"
+                    error_json = json.dumps({"error": str(e), "message": str(e)})
+                    yield f"event: error\ndata: {error_json}\n\n"
 
             return StreamingResponse(
                 generate(),
-                media_type="text/event-stream"
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                }
             )
         else:
             # Non-streaming response
@@ -617,15 +657,20 @@ async def create_run_stream(thread_id: str, request: Request):
         }
 
         # Streaming response with hybrid mode (messages + values)
-        # Reference: https://docs.langchain.com/oss/python/langgraph/streaming
+        # Uses standard SSE format: "event: <type>\ndata: <json>\n\n"
+        # This matches the LangGraph Cloud protocol expected by @langchain/langgraph-sdk
         async def generate():
             """Generate streaming response with real-time tokens."""
             import asyncio
             try:
+                run_id = str(uuid.uuid4())
                 chunk_count = 0
 
+                # Send metadata event first (required by SDK)
+                metadata_payload = json.dumps({"run_id": run_id, "thread_id": thread_id}, ensure_ascii=False)
+                yield f"event: metadata\ndata: {metadata_payload}\n\n"
+
                 # HYBRID STREAMING: messages (real-time tokens) + values (node updates)
-                # When using multiple modes, astream returns (mode, chunk) tuples
                 async for event in graph.astream(
                     graph_input,
                     config=graph_config,
@@ -633,52 +678,44 @@ async def create_run_stream(thread_id: str, request: Request):
                 ):
                     chunk_count += 1
 
-                    # Unpack (mode, chunk) tuple
                     if isinstance(event, tuple) and len(event) == 2:
                         mode, chunk = event
 
                         if mode == "messages":
-                            # Messages mode returns (message, metadata) tuple
+                            # Extract the raw message for filtering
+                            raw_msg = chunk[0] if isinstance(chunk, tuple) and len(chunk) == 2 else chunk
+
+                            # Only stream AI text tokens in real-time
+                            # Tool calls, MCP results, visualizations → handled by values mode (node-level)
+                            if not is_streamable_text_message(raw_msg):
+                                continue
+
                             if isinstance(chunk, tuple) and len(chunk) == 2:
                                 msg, metadata = chunk
-                                # Stream only message content (tokens)
-                                serialized_data = serialize_chunk([msg])
+                                serialized_msg = serialize_chunk(msg)
+                                serialized_metadata = serialize_chunk(metadata) if metadata else {}
                             else:
-                                # Fallback: chunk is already a message
-                                serialized_data = serialize_chunk([chunk])
+                                serialized_msg = serialize_chunk(chunk)
+                                serialized_metadata = {}
 
-                            stream_event = {
-                                "event": "messages",
-                                "data": serialized_data
-                            }
+                            data_json = json.dumps([serialized_msg, serialized_metadata], ensure_ascii=False)
+                            yield f"event: messages\ndata: {data_json}\n\n"
+
                         elif mode == "values":
-                            # Values mode returns full state
                             serialized_data = serialize_chunk(chunk)
-                            stream_event = {
-                                "event": "values",
-                                "data": serialized_data
-                            }
-                        else:
-                            # Unknown mode - skip
-                            continue
+                            data_json = json.dumps(serialized_data, ensure_ascii=False)
+                            yield f"event: values\ndata: {data_json}\n\n"
 
-                        event_json = json.dumps(stream_event, ensure_ascii=False)
-                        yield f"data: {event_json}\n\n"
+                        else:
+                            continue
                     else:
-                        # Fallback for single mode (backward compatibility)
+                        # Fallback for single mode
                         serialized_chunk = serialize_chunk(event)
-                        stream_event = {
-                            "event": "values",
-                            "data": serialized_chunk
-                        }
-                        event_json = json.dumps(stream_event, ensure_ascii=False)
-                        yield f"data: {event_json}\n\n"
+                        data_json = json.dumps(serialized_chunk, ensure_ascii=False)
+                        yield f"event: values\ndata: {data_json}\n\n"
 
                 # Send end event
-                end_event = {
-                    "event": "end"
-                }
-                yield f"data: {json.dumps(end_event)}\n\n"
+                yield f"event: end\ndata: \n\n"
 
             except asyncio.CancelledError:
                 # Client disconnected - don't yield error event
@@ -687,11 +724,8 @@ async def create_run_stream(thread_id: str, request: Request):
                 print(f"❌ 스트리밍 오류: {e}")
                 import traceback
                 traceback.print_exc()
-                error_event = {
-                    "event": "error",
-                    "data": {"error": str(e)}
-                }
-                yield f"data: {json.dumps(error_event)}\n\n"
+                error_json = json.dumps({"error": str(e), "message": str(e)})
+                yield f"event: error\ndata: {error_json}\n\n"
 
         return StreamingResponse(
             generate(),
