@@ -33,7 +33,13 @@ export function AGGridTable({ config, className }: AGGridTableProps) {
       let parsedConfig: { columnDefs: ColDef[]; rowData: any[] };
 
       if (typeof config === "string") {
-        parsedConfig = JSON.parse(config);
+        // AI가 생성한 JSON은 비표준일 수 있으므로 전처리
+        const sanitized = config
+          .replace(/:\s*(\d{1,3}(,\d{3})+)(\s*[,}\]])/g, (_, num, __, tail) =>
+            `: ${num.replace(/,/g, "")}${tail}`)
+          .replace(/'/g, '"')
+          .replace(/,\s*([}\]])/g, "$1");
+        parsedConfig = JSON.parse(sanitized);
       } else {
         parsedConfig = config;
       }

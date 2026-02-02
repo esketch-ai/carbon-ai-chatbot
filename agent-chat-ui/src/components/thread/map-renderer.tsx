@@ -341,7 +341,12 @@ export function MapRenderer({ config, className }: MapRendererProps) {
       let parsedConfig: MapConfig;
 
       if (typeof config === "string") {
-        parsedConfig = JSON.parse(config);
+        const sanitized = config
+          .replace(/:\s*(\d{1,3}(,\d{3})+)(\s*[,}\]])/g, (_, num, __, tail) =>
+            `: ${num.replace(/,/g, "")}${tail}`)
+          .replace(/'/g, '"')
+          .replace(/,\s*([}\]])/g, "$1");
+        parsedConfig = JSON.parse(sanitized);
       } else {
         parsedConfig = config;
       }
