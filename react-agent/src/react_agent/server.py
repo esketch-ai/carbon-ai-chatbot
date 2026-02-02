@@ -22,6 +22,13 @@ from react_agent.rag_tool import get_rag_tool  # RAG 도구
 # Load environment variables
 load_dotenv()
 
+# 애플리케이션 전체 로깅 설정 (모든 모듈의 logger.info()가 출력되도록)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+
 logger = logging.getLogger(__name__)
 
 
