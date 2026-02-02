@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { ModuleRegistry, AllCommunityModule, ColDef } from "ag-grid-community";
 import { cn } from "@/lib/utils";
+import { safeParseJSON } from "@/lib/json-sanitizer";
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
@@ -33,13 +34,11 @@ export function AGGridTable({ config, className }: AGGridTableProps) {
       let parsedConfig: { columnDefs: ColDef[]; rowData: any[] };
 
       if (typeof config === "string") {
-        // AI가 생성한 JSON은 비표준일 수 있으므로 전처리
-        const sanitized = config
-          .replace(/:\s*(\d{1,3}(,\d{3})+)(\s*[,}\]])/g, (_, num, __, tail) =>
-            `: ${num.replace(/,/g, "")}${tail}`)
-          .replace(/'/g, '"')
-          .replace(/,\s*([}\]])/g, "$1");
-        parsedConfig = JSON.parse(sanitized);
+        const { data, error: parseError } = safeParseJSON<{ columnDefs: ColDef[]; rowData: any[] }>(config);
+        if (!data || parseError) {
+          throw new Error(parseError || "테이블 JSON을 파싱할 수 없습니다.");
+        }
+        parsedConfig = data;
       } else {
         parsedConfig = config;
       }

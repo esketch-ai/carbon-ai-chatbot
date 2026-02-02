@@ -7,6 +7,7 @@ import { ScatterplotLayer, PathLayer, PolygonLayer, GeoJsonLayer } from "@deck.g
 import { HexagonLayer } from "@deck.gl/aggregation-layers";
 import type { Layer } from "@deck.gl/core";
 import { cn } from "@/lib/utils";
+import { safeParseJSON } from "@/lib/json-sanitizer";
 import "leaflet/dist/leaflet.css";
 
 // 전역 활성 맵 관리 
@@ -341,12 +342,11 @@ export function MapRenderer({ config, className }: MapRendererProps) {
       let parsedConfig: MapConfig;
 
       if (typeof config === "string") {
-        const sanitized = config
-          .replace(/:\s*(\d{1,3}(,\d{3})+)(\s*[,}\]])/g, (_, num, __, tail) =>
-            `: ${num.replace(/,/g, "")}${tail}`)
-          .replace(/'/g, '"')
-          .replace(/,\s*([}\]])/g, "$1");
-        parsedConfig = JSON.parse(sanitized);
+        const { data, error: parseError } = safeParseJSON<MapConfig>(config);
+        if (!data || parseError) {
+          throw new Error(parseError || "맵 JSON을 파싱할 수 없습니다.");
+        }
+        parsedConfig = data;
       } else {
         parsedConfig = config;
       }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AgCharts } from "ag-charts-react";
 import type { AgChartOptions } from "ag-charts-community";
 import { cn } from "@/lib/utils";
+import { safeParseJSON } from "@/lib/json-sanitizer";
 
 interface AGChartProps {
   config: string | AgChartOptions;
@@ -24,17 +25,11 @@ export function AGChart({ config, className }: AGChartProps) {
       let options: AgChartOptions;
 
       if (typeof config === "string") {
-        // AI가 생성한 JSON은 비표준일 수 있으므로 전처리
-        const sanitized = config
-          // 쉼표가 포함된 숫자 (예: 80,000 → 80000)
-          .replace(/:\s*(\d{1,3}(,\d{3})+)(\s*[,}\]])/g, (_, num, __, tail) => {
-            return `: ${num.replace(/,/g, "")}${tail}`;
-          })
-          // 작은따옴표를 큰따옴표로 (프로퍼티명/값)
-          .replace(/'/g, '"')
-          // 후행 쉼표 제거 (예: [1, 2,] → [1, 2])
-          .replace(/,\s*([}\]])/g, "$1");
-        options = JSON.parse(sanitized);
+        const { data, error: parseError } = safeParseJSON<AgChartOptions>(config);
+        if (!data || parseError) {
+          throw new Error(parseError || "차트 JSON을 파싱할 수 없습니다.");
+        }
+        options = data;
       } else {
         options = config;
       }
