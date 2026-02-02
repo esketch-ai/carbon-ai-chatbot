@@ -22,12 +22,14 @@ import { getApiKey } from "@/lib/api-key";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useQueryState } from "nuqs";
+import { useSession } from "@/hooks/useSession";
 import { ConnectionDialog } from "./ConnectionDialog";
 
 export function SettingsDialog() {
   const { userSettings, updateUserSettings, resetUserSettings } = useSettings();
   const { config, schemas, assistantId, isLoading, error: _error, updateConfig, refetchConfig } = useAssistantConfig();
   const { threads, getThreads, setThreads } = useThreads();
+  const { resetSessionTimer } = useSession();
   const [apiUrlParam] = useQueryState("apiUrl");
   const [threadId, setThreadId] = useQueryState("threadId");
 
@@ -129,6 +131,7 @@ export function SettingsDialog() {
       // Clear current thread if it exists
       if (threadId) {
         setThreadId(null);
+        resetSessionTimer();
       }
 
       toast.success(`Successfully deleted ${threadsToDelete.length} conversation${threadsToDelete.length > 1 ? 's' : ''}`);

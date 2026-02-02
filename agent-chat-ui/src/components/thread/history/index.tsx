@@ -7,6 +7,7 @@ import { useQueryState, parseAsBoolean } from "nuqs";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { DesktopSidebar } from "./components/DesktopSidebar";
 import { MobileSidebar } from "./components/MobileSidebar";
+import { useSession } from "@/hooks/useSession";
 
 interface ThreadHistoryProps {
   onShowGuide?: () => void;
@@ -26,6 +27,7 @@ export default function ThreadHistory({ onShowGuide }: ThreadHistoryProps) {
   const finalApiUrl = apiUrl || envApiUrl;
   const finalAssistantId = assistantId?.trim();
 
+  const { resetSessionTimer } = useSession();
   const { getThreads, threads, setThreads, threadsLoading, setThreadsLoading } =
     useThreads();
 
@@ -52,6 +54,7 @@ export default function ThreadHistory({ onShowGuide }: ThreadHistoryProps) {
 
   const handleNewChat = () => {
     setThreadId(null);
+    resetSessionTimer();
   };
 
   const handleToggleChatHistory = () => {

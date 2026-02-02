@@ -22,6 +22,8 @@ import { toast } from "sonner";
 import { AssistantConfigProvider } from "./AssistantConfig";
 import { normalizeApiUrl } from "./client";
 import { TIMING } from "@/lib/constants";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
+import { SessionContext } from "./Session";
 
 export type StateType = { messages: Message[]; ui?: UIMessage[] };
 
@@ -92,6 +94,10 @@ const StreamSession = ({
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
 
+  const { resetTimer } = useSessionTimeout({
+    onExpire: () => setThreadId(null),
+  });
+
   // Memoize callbacks to prevent infinite re-renders
   const handleCustomEvent = useCallback(
     (event: unknown, options: { mutate: (fn: (prev: StateType) => StateType) => void }) => {
@@ -109,6 +115,7 @@ const StreamSession = ({
     (id: string) => {
       console.log("[StreamSession] New thread ID received:", id);
       setThreadId(id);
+      resetTimer();
 
       // 즉시 히스토리 갱신 시도
       console.log("[StreamSession] Immediately refetching threads list...");
@@ -131,7 +138,7 @@ const StreamSession = ({
           console.error("[StreamSession] Error fetching threads:", error);
         });
     },
-    [setThreadId, getThreads, setThreads]
+    [setThreadId, getThreads, setThreads, resetTimer]
   );
 
   const streamValue = useTypedStream({
@@ -178,15 +185,22 @@ const StreamSession = ({
     });
   }, [apiKey, apiUrl]);
 
+  const sessionContextValue = useMemo(
+    () => ({ resetSessionTimer: resetTimer }),
+    [resetTimer],
+  );
+
   return (
     <StreamContext.Provider value={streamValue}>
-      <AssistantConfigProvider
-        apiUrl={apiUrl}
-        assistantId={assistantId}
-        apiKey={apiKey}
-      >
-        {children}
-      </AssistantConfigProvider>
+      <SessionContext.Provider value={sessionContextValue}>
+        <AssistantConfigProvider
+          apiUrl={apiUrl}
+          assistantId={assistantId}
+          apiKey={apiKey}
+        >
+          {children}
+        </AssistantConfigProvider>
+      </SessionContext.Provider>
     </StreamContext.Provider>
   );
 };

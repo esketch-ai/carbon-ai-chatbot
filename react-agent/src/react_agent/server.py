@@ -130,6 +130,17 @@ def serialize_chunk(chunk):
     else:
         return chunk
 
+# Thread activity tracking for memory cleanup
+thread_last_activity: Dict[str, float] = {}
+THREAD_TTL_SECONDS = 90 * 60  # 90 minutes
+CLEANUP_INTERVAL_SECONDS = 30 * 60  # 30 minutes
+
+
+def track_thread_activity(thread_id: str) -> None:
+    """Record the last activity time for a thread."""
+    thread_last_activity[thread_id] = time.time()
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="CarbonAI Agent API",
@@ -187,6 +198,29 @@ async def startup_event():
         )
     except asyncio.TimeoutError:
         logger.warning("[STARTUP] ⚠️ 일부 초기화 작업이 타임아웃됨 (10초)")
+
+    # Background task: clean up expired threads from MemorySaver
+    async def cleanup_expired_threads():
+        while True:
+            await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+            try:
+                now = time.time()
+                expired = [
+                    tid for tid, last in thread_last_activity.items()
+                    if now - last > THREAD_TTL_SECONDS
+                ]
+                if expired:
+                    checkpointer = getattr(graph, "checkpointer", None)
+                    for tid in expired:
+                        thread_last_activity.pop(tid, None)
+                        if checkpointer and hasattr(checkpointer, "storage"):
+                            # MemorySaver stores data keyed by thread_id
+                            checkpointer.storage.pop(tid, None)
+                    logger.info(f"Cleaned up {len(expired)} expired threads")
+            except Exception as e:
+                logger.warning(f"Thread cleanup error: {e}")
+
+    asyncio.create_task(cleanup_expired_threads())
 
     logger.info("=" * 60)
     logger.info("✅ 서버 준비 완료")
@@ -475,6 +509,7 @@ async def search_threads(request: Request):
 async def create_run(thread_id: str, request: Request):
     """Create a run in a thread (LangGraph Cloud API compatible)."""
     try:
+        track_thread_activity(thread_id)
         body = await request.json()
 
         # Extract input from body
@@ -615,6 +650,7 @@ async def create_run(thread_id: str, request: Request):
 async def create_run_stream(thread_id: str, request: Request):
     """Create a streaming run in a thread (LangGraph Cloud API compatible)."""
     try:
+        track_thread_activity(thread_id)
         body = await request.json()
         print(f"[STREAM] Request body: {body}")
 

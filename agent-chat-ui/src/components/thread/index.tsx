@@ -42,6 +42,7 @@ import { FullDescriptionModal } from "./FullDescriptionModal";
 import { useAssistantConfig } from "@/hooks/useAssistantConfig";
 import { ChatOpeners } from "./ChatOpeners";
 import { CategorySelectors } from "./CategorySelectors";
+import { useSession } from "@/hooks/useSession";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -110,6 +111,7 @@ export function Thread() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
+  const { resetSessionTimer } = useSession();
   const stream = useStreamContext();
   const messages = stream.messages;
   const isLoading = stream.isLoading;
@@ -267,6 +269,7 @@ export function Thread() {
 
     setInput("");
     setContentBlocks([]);
+    resetSessionTimer();
   };
 
   const handleRegenerate = (
@@ -303,7 +306,7 @@ export function Thread() {
               <div className="relative flex items-center justify-start gap-2">
                 <motion.button
                   className="flex cursor-pointer items-center gap-2"
-                  onClick={() => setThreadId(null)}
+                  onClick={() => { setThreadId(null); resetSessionTimer(); }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img

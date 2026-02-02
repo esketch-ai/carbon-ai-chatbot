@@ -1,5 +1,6 @@
 import { useStreamContext } from "@/hooks/useStreamContext";
 import { useThreads } from "@/hooks/useThreads";
+import { useSession } from "@/hooks/useSession";
 import { useQueryState } from "nuqs";
 import { toast } from "sonner";
 import { UI_TEXT } from "../constants";
@@ -11,6 +12,7 @@ import { UI_TEXT } from "../constants";
 export function useThreadOperations() {
   const { client } = useStreamContext();
   const { getThreads, setThreads } = useThreads();
+  const { resetSessionTimer } = useSession();
   const [threadId, setThreadId] = useQueryState("threadId");
 
   const deleteThread = async (threadIdToDelete: string) => {
@@ -25,6 +27,7 @@ export function useThreadOperations() {
       // If the deleted thread was active, reset the thread
       if (threadId === threadIdToDelete) {
         setThreadId(null);
+        resetSessionTimer();
       }
     } catch (error) {
       console.error("Error deleting thread:", error);

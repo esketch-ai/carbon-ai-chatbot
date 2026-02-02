@@ -19,6 +19,8 @@ export const UI = {
 export const TIMING = {
   /** Delay before fetching threads after creation (milliseconds) */
   THREAD_FETCH_DELAY: 1000,
+  /** Session timeout after last activity (milliseconds) - 60 minutes */
+  SESSION_TIMEOUT: 60 * 60 * 1000,
 } as const;
 
 /**
