@@ -24,8 +24,17 @@ export function AGChart({ config, className }: AGChartProps) {
       let options: AgChartOptions;
 
       if (typeof config === "string") {
-        // JSON 문자열을 파싱
-        options = JSON.parse(config);
+        // AI가 생성한 JSON은 비표준일 수 있으므로 전처리
+        let sanitized = config
+          // 쉼표가 포함된 숫자 (예: 80,000 → 80000)
+          .replace(/:\s*(\d{1,3}(,\d{3})+)(\s*[,}\]])/g, (_, num, __, tail) => {
+            return `: ${num.replace(/,/g, "")}${tail}`;
+          })
+          // 작은따옴표를 큰따옴표로 (프로퍼티명/값)
+          .replace(/'/g, '"')
+          // 후행 쉼표 제거 (예: [1, 2,] → [1, 2])
+          .replace(/,\s*([}\]])/g, "$1");
+        options = JSON.parse(sanitized);
       } else {
         options = config;
       }

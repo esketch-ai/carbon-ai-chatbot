@@ -58,6 +58,22 @@ export function preprocessStreamingMarkdown(
     return { processed: "", hasIncompleteCodeBlock: false, language: null };
   }
 
+  // 불완전한 서로게이트 페어(이모지 등) 처리:
+  // UTF-16에서 이모지는 2개의 코드유닛(서로게이트 페어)으로 구성됨.
+  // 스트리밍 토큰 경계에서 high surrogate만 도착하고 low가 아직 안 온 경우
+  // 깨진 문자가 보이므로, 끝의 불완전한 서로게이트를 잘라냄.
+  let safeEnd = text.length;
+  if (safeEnd > 0) {
+    const lastChar = text.charCodeAt(safeEnd - 1);
+    // High surrogate (0xD800-0xDBFF) 이면서 뒤에 low surrogate가 없는 경우
+    if (lastChar >= 0xD800 && lastChar <= 0xDBFF) {
+      safeEnd -= 1;
+    }
+  }
+  if (safeEnd !== text.length) {
+    text = text.slice(0, safeEnd);
+  }
+
   // 줄 끝의 부분 펜스 처리: 줄 끝이 ` 또는 ``로 끝나면서
   // 코드블록 펜스의 시작일 수 있는 경우 잘라냄
   const partialFenceMatch = text.match(/\n(`{1,2})$/);
