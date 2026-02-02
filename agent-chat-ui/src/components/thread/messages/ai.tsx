@@ -15,6 +15,10 @@ import { useQueryState, parseAsBoolean } from "nuqs";
 import { GenericInterruptView } from "./generic-interrupt";
 import { useArtifact } from "../artifact";
 import { useSettings } from "@/hooks/useSettings";
+import {
+  preprocessStreamingMarkdown,
+  getVisualizationLabel,
+} from "@/lib/streaming-markdown-utils";
 
 function CustomComponent({
   message,
@@ -133,6 +137,10 @@ export function AssistantMessage({
   const displayedText = contentString;
   const isStreaming = isLastMessage && isLoading;
 
+  // 스트리밍 중 미완성 코드블록 전처리
+  const { processed: safeText, hasIncompleteCodeBlock, language: incompleteLanguage } =
+    preprocessStreamingMarkdown(displayedText, isStreaming);
+
   const hasNoAIOrToolMessages = !thread.messages.find(
     (m) => m.type === "ai" || m.type === "tool",
   );
@@ -169,10 +177,21 @@ export function AssistantMessage({
             {displayedText && (
               <div className="py-1 leading-relaxed">
                 <MarkdownText isStreaming={isStreaming}>
-                  {displayedText}
+                  {safeText}
                 </MarkdownText>
-                {/* 스트리밍 커서 표시 */}
-                {isStreaming && (
+                {/* 미완성 코드블록 플레이스홀더 */}
+                {hasIncompleteCodeBlock && incompleteLanguage && (
+                  <div className="my-3 flex items-center gap-3 rounded-xl border border-border/40 bg-muted/50 px-5 py-4 text-sm text-muted-foreground">
+                    <div className="flex gap-1">
+                      <div className="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-[pulse_1.5s_ease-in-out_infinite]" />
+                      <div className="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-[pulse_1.5s_ease-in-out_0.5s_infinite]" />
+                      <div className="h-1.5 w-1.5 rounded-full bg-foreground/40 animate-[pulse_1.5s_ease-in-out_1s_infinite]" />
+                    </div>
+                    <span>{getVisualizationLabel(incompleteLanguage)} 생성 중...</span>
+                  </div>
+                )}
+                {/* 스트리밍 커서 표시 - 코드블록 생성 중에는 숨김 */}
+                {isStreaming && !hasIncompleteCodeBlock && (
                   <span className="inline-block w-0.5 h-4 bg-foreground/70 animate-pulse ml-0.5 align-middle" />
                 )}
               </div>
