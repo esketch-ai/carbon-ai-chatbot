@@ -36,6 +36,36 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+
+async def rewrite_query_for_rag(user_message: str) -> str:
+    """LLM을 사용해 사용자 메시지를 RAG 검색에 최적화된 쿼리로 재작성
+
+    대화체 문장에서 핵심 키워드를 추출하여 벡터 검색 정확도를 높입니다.
+    """
+    try:
+        llm = ChatAnthropic(temperature=0, model="claude-haiku-4-5", max_tokens=150)
+        t0 = time.perf_counter()
+        response = await llm.ainvoke([
+            {"role": "system", "content": (
+                "사용자의 질문을 벡터 데이터베이스 검색에 최적화된 검색 쿼리로 변환하세요.\n"
+                "규칙:\n"
+                "- 핵심 키워드와 전문 용어만 추출\n"
+                "- 불필요한 조사, 어미, 인사말 제거\n"
+                "- 약어가 있으면 풀네임도 병기 (예: KAU → KAU 한국 할당 배출권)\n"
+                "- 검색 쿼리만 출력, 설명 없이\n"
+                "- 한국어 유지"
+            )},
+            {"role": "user", "content": user_message}
+        ])
+        elapsed = time.perf_counter() - t0
+        rewritten = response.content.strip()
+        logger.info(f"⏱️ [쿼리 재작성] {elapsed:.2f}초: \"{user_message[:50]}\" → \"{rewritten[:50]}\"")
+        return rewritten
+    except Exception as e:
+        logger.warning(f"[쿼리 재작성] 실패, 원본 쿼리 사용: {e}")
+        return user_message
+
+
 # 병렬 도구 호출
 
 
@@ -69,11 +99,14 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
             "prefetched_context": {"source": "faq_cache"}
         }
 
+    # LLM으로 검색 쿼리 재작성 (대화체 → 키워드 중심)
+    rag_query = await rewrite_query_for_rag(last_human_message)
+
     # RAG 검색 실행
     tasks = []
     task_names = []
 
-    tasks.append(asyncio.create_task(_safe_rag_search(last_human_message)))
+    tasks.append(asyncio.create_task(_safe_rag_search(rag_query)))
     task_names.append("RAG")
 
     # 병렬 실행
