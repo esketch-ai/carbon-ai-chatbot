@@ -68,16 +68,10 @@ function parseAnthropicStreamedToolCalls(
     let args: Record<string, unknown> = {};
     if (tc.input) {
       try {
-        const inputStr = typeof tc.input === "string" ? tc.input.trim() : null;
-        // 빈 문자열이면 JSON.parse 시 에러 발생하므로 스킵
-        if (inputStr === "" || inputStr === null) {
-          args = typeof tc.input === "object" ? tc.input as Record<string, unknown> : {};
-        } else {
-          const parsedInput = inputStr !== null
-            ? parsePartialJson(inputStr)
-            : tc.input;
-          args = (parsedInput as Record<string, unknown>) ?? {};
-        }
+        const parsedInput = typeof tc.input === "string"
+          ? parsePartialJson(tc.input)
+          : tc.input;
+        args = parsedInput ?? {};
       } catch {
         // Pass
       }

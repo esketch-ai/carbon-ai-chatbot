@@ -572,7 +572,7 @@ async def create_run(thread_id: str, request: Request):
                             data_json = json.dumps(serialized_chunk, ensure_ascii=False)
                             yield f"event: values\ndata: {data_json}\n\n"
 
-                    yield f"event: end\ndata: \n\n"
+                    yield f"event: end\ndata: {{}}\n\n"
 
                 except Exception as e:
                     import traceback
@@ -715,7 +715,7 @@ async def create_run_stream(thread_id: str, request: Request):
                         yield f"event: values\ndata: {data_json}\n\n"
 
                 # Send end event
-                yield f"event: end\ndata: \n\n"
+                yield f"event: end\ndata: {{}}\n\n"
 
             except asyncio.CancelledError:
                 # Client disconnected - don't yield error event
