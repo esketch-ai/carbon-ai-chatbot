@@ -256,7 +256,7 @@ const MarkdownTextImpl: FC<{
             <VisualizationToggle
               code={code}
               language={language}
-              visualization={<AGChart config={code} />}
+              renderVisualization={() => <AGChart config={code} />}
               isStreaming={isStreaming}
             />
           );
@@ -268,7 +268,7 @@ const MarkdownTextImpl: FC<{
             <VisualizationToggle
               code={code}
               language={language}
-              visualization={<AGGridTable config={code} />}
+              renderVisualization={() => <AGGridTable config={code} />}
               isStreaming={isStreaming}
             />
           );
@@ -280,7 +280,7 @@ const MarkdownTextImpl: FC<{
             <VisualizationToggle
               code={code}
               language={language}
-              visualization={<MapRenderer config={code} />}
+              renderVisualization={() => <MapRenderer config={code} />}
               isStreaming={isStreaming}
             />
           );
@@ -292,7 +292,7 @@ const MarkdownTextImpl: FC<{
             <VisualizationToggle
               code={code}
               language={language}
-              visualization={<MermaidDiagram code={code} />}
+              renderVisualization={() => <MermaidDiagram code={code} />}
               isStreaming={isStreaming}
             />
           );

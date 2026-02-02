@@ -134,12 +134,7 @@ export function AssistantMessage({
 
   // Real-time token streaming - no typing effect needed
   // Tokens are streamed from backend via "messages" mode
-  const displayedText = contentString;
   const isStreaming = isLastMessage && isLoading;
-
-  // 스트리밍 중 미완성 코드블록 전처리
-  const { processed: safeText, hasIncompleteCodeBlock, language: incompleteLanguage } =
-    preprocessStreamingMarkdown(displayedText, isStreaming);
 
   const hasNoAIOrToolMessages = !thread.messages.find(
     (m) => m.type === "ai" || m.type === "tool",
@@ -169,6 +164,16 @@ export function AssistantMessage({
   if (isToolResult) {
     return null;
   }
+
+  // 도구 호출이 있는 중간 AI 메시지의 텍스트는 숨김 (초안/사고 과정)
+  // 마지막 메시지가 아니고 tool_calls가 있으면 → 중간 단계 메시지
+  const isIntermediateWithToolCalls =
+    !isLastMessage && (hasToolCalls || hasAnthropicToolCalls);
+  const displayedText = isIntermediateWithToolCalls ? "" : contentString;
+
+  // 스트리밍 중 미완성 코드블록 전처리
+  const { processed: safeText, hasIncompleteCodeBlock, language: incompleteLanguage } =
+    preprocessStreamingMarkdown(displayedText, isStreaming);
 
   return (
     <div className="group mr-auto flex items-start gap-3">

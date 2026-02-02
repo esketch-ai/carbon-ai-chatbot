@@ -8,7 +8,8 @@ import { SyntaxHighlighter } from "@/components/thread/syntax-highlighter";
 interface VisualizationToggleProps {
   code: string;
   language: string;
-  visualization: ReactNode;
+  /** 시각화 컴포넌트를 lazy로 생성하는 함수. 미리보기 탭 활성화 시에만 호출됨. */
+  renderVisualization: () => ReactNode;
   isStreaming?: boolean;
   className?: string;
 }
@@ -16,7 +17,7 @@ interface VisualizationToggleProps {
 export function VisualizationToggle({
   code,
   language,
-  visualization,
+  renderVisualization,
   isStreaming = false,
   className,
 }: VisualizationToggleProps) {
@@ -31,6 +32,8 @@ export function VisualizationToggle({
       setActiveTab("preview");
     }
   }, [isStreaming]);
+
+  const showPreview = activeTab === "preview" && !isStreaming;
 
   return (
     <div className={cn("relative", className)}>
@@ -75,9 +78,9 @@ export function VisualizationToggle({
 
       {/* Content */}
       <div className="relative">
-        {activeTab === "preview" && !isStreaming ? (
+        {showPreview ? (
           <div className="transition-opacity duration-200">
-            {visualization}
+            {renderVisualization()}
           </div>
         ) : (
           <div className="rounded-xl bg-muted/50 dark:bg-zinc-900 border border-border/30 dark:border-zinc-700 overflow-hidden">
