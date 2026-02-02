@@ -6,3 +6,38 @@ react-agent/chroma_db_backup_l2/
 
 # Test results
 test_results.txt
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# LangGraph API
+.langgraph_api
+.env
+.env.*
+.env.local
+.env.production
+.env.development
+.next/
+next-env.d.ts
