@@ -3,6 +3,7 @@
 """
 
 import json
+import time
 import logging
 from typing import Dict, Any, List
 from langchain_anthropic import ChatAnthropic
@@ -40,10 +41,12 @@ async def manager_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
     )
 
     try:
+        t0 = time.perf_counter()
         response = await llm.ainvoke([
             {"role": "system", "content": system_prompt},
             *state.messages
         ])
+        llm_elapsed = time.perf_counter() - t0
 
         # JSON 파싱
         content = response.content.strip()
@@ -60,6 +63,11 @@ async def manager_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
 
         decision = json.loads(content)
 
+        logger.info(
+            f"⏱️ [Manager LLM] {llm_elapsed:.2f}초 → "
+            f"{decision['assigned_agent']} "
+            f"(confidence: {decision.get('confidence', 'N/A')})"
+        )
         logger.info(
             f"[Manager] 복잡도: {decision['complexity']}, "
             f"할당: {decision['assigned_agent']}, "
@@ -131,15 +139,19 @@ async def simple_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
     model = llm.bind_tools(allowed_tools) if allowed_tools else llm
 
     # LLM 호출
+    t0 = time.perf_counter()
     response = await model.ainvoke([
         {"role": "system", "content": system_prompt},
         *state.messages
     ])
+    llm_elapsed = time.perf_counter() - t0
 
     # 도구 호출 로깅
     if response.tool_calls:
         tool_names = [tc.get('name', 'unknown') for tc in response.tool_calls]
-        logger.info(f"[Simple Agent] 도구 호출: {', '.join(tool_names)}")
+        logger.info(f"⏱️ [Simple Agent LLM] {llm_elapsed:.2f}초 (도구 호출: {', '.join(tool_names)})")
+    else:
+        logger.info(f"⏱️ [Simple Agent LLM] {llm_elapsed:.2f}초 (최종 응답)")
 
     # Mermaid 코드 블록을 이미지로 자동 변환
     if response.content and isinstance(response.content, str):
@@ -210,15 +222,19 @@ async def expert_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
     model = llm.bind_tools(allowed_tools) if allowed_tools else llm
 
     # LLM 호출
+    t0 = time.perf_counter()
     response = await model.ainvoke([
         {"role": "system", "content": system_prompt},
         *state.messages
     ])
+    llm_elapsed = time.perf_counter() - t0
 
     # 도구 호출 로깅
     if response.tool_calls:
         tool_names = [tc.get('name', 'unknown') for tc in response.tool_calls]
-        logger.info(f"[Expert: {agent_config.name}] 도구 호출: {', '.join(tool_names)}")
+        logger.info(f"⏱️ [Expert Agent LLM] {llm_elapsed:.2f}초 (도구 호출: {', '.join(tool_names)})")
+    else:
+        logger.info(f"⏱️ [Expert Agent LLM] {llm_elapsed:.2f}초 (최종 응답)")
 
     # Mermaid 코드 블록을 이미지로 자동 변환
     if response.content and isinstance(response.content, str):

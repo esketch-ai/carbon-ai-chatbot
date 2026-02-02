@@ -3,6 +3,7 @@
 import os
 import uuid
 import json
+import time
 import logging
 import asyncio
 from typing import Any, Dict, Optional, List
@@ -525,6 +526,7 @@ async def create_run(thread_id: str, request: Request):
             # Uses standard SSE format matching LangGraph Cloud protocol
             async def generate():
                 """Generate streaming response in LangGraph Cloud SSE format."""
+                t_total = time.perf_counter()
                 try:
                     run_id = str(uuid.uuid4())
 
@@ -572,6 +574,8 @@ async def create_run(thread_id: str, request: Request):
                             data_json = json.dumps(serialized_chunk, ensure_ascii=False)
                             yield f"event: values\ndata: {data_json}\n\n"
 
+                    total_elapsed = time.perf_counter() - t_total
+                    logger.info(f"⏱️ [전체 요청] {total_elapsed:.2f}초 (thread: {thread_id})")
                     yield f"event: end\ndata: {{}}\n\n"
 
                 except Exception as e:
@@ -662,6 +666,7 @@ async def create_run_stream(thread_id: str, request: Request):
         async def generate():
             """Generate streaming response with real-time tokens."""
             import asyncio
+            t_total = time.perf_counter()
             try:
                 run_id = str(uuid.uuid4())
                 chunk_count = 0
@@ -715,13 +720,15 @@ async def create_run_stream(thread_id: str, request: Request):
                         yield f"event: values\ndata: {data_json}\n\n"
 
                 # Send end event
+                total_elapsed = time.perf_counter() - t_total
+                logger.info(f"⏱️ [전체 요청] {total_elapsed:.2f}초 (thread: {thread_id})")
                 yield f"event: end\ndata: {{}}\n\n"
 
             except asyncio.CancelledError:
                 # Client disconnected - don't yield error event
                 raise
             except Exception as e:
-                print(f"❌ 스트리밍 오류: {e}")
+                logger.error(f"❌ 스트리밍 오류: {e}")
                 import traceback
                 traceback.print_exc()
                 error_json = json.dumps({"error": str(e), "message": str(e)})

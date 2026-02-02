@@ -6,6 +6,8 @@
 - Expert Agents: 전문 분야 답변 (Haiku)
 """
 
+import time
+import logging
 import asyncio
 from typing import Dict, List, Literal, Any
 
@@ -29,14 +31,25 @@ from react_agent.graph import smart_tool_prefetch, _safe_rag_search
 # Ensure .env is loaded
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 
 # ==================== 도구 호출 노드 (재사용) ====================
 
 async def call_tools(state: State) -> Dict[str, List[ToolMessage]]:
     """동적으로 도구를 로드하고 호출"""
+    # 호출된 도구 이름 추출
+    last_message = state.messages[-1]
+    tool_names = [tc.get('name', 'unknown') for tc in getattr(last_message, 'tool_calls', [])]
+
+    t0 = time.perf_counter()
     all_tools = await get_all_tools()
     tool_node = ToolNode(all_tools)
-    return await tool_node.ainvoke(state)
+    result = await tool_node.ainvoke(state)
+    elapsed = time.perf_counter() - t0
+
+    logger.info(f"⏱️ [도구 실행] 총 {elapsed:.2f}초 ({', '.join(tool_names)})")
+    return result
 
 
 # ==================== 라우팅 함수 ====================
@@ -48,10 +61,10 @@ def route_after_prefetch(state: State) -> Literal["manager_agent", "__end__"]:
     """
     if hasattr(state, 'prefetched_context') and state.prefetched_context:
         if state.prefetched_context.get("source") == "faq_cache":
-            print("[ROUTE] FAQ 캐시 히트 → 즉시 종료")
+            logger.info("[ROUTE] FAQ 캐시 히트 → 즉시 종료")
             return "__end__"
 
-    print("[ROUTE] Prefetch 완료 → Manager Agent")
+    logger.info("[ROUTE] Prefetch 완료 → Manager Agent")
     return "manager_agent"
 
 
@@ -64,10 +77,10 @@ def route_after_manager(state: State) -> Literal["simple_agent", "expert_agent"]
     assigned = decision.get("assigned_agent", "simple")
 
     if assigned == "simple":
-        print(f"[ROUTE] Manager 결정: Simple Agent (복잡도: {decision.get('complexity')})")
+        logger.info(f"[ROUTE] Manager 결정: Simple Agent (복잡도: {decision.get('complexity')})")
         return "simple_agent"
     else:
-        print(f"[ROUTE] Manager 결정: Expert Agent ({assigned}) (복잡도: {decision.get('complexity')})")
+        logger.info(f"[ROUTE] Manager 결정: Expert Agent ({assigned}) (복잡도: {decision.get('complexity')})")
         return "expert_agent"
 
 
@@ -80,10 +93,10 @@ def route_after_agent(state: State) -> Literal["tools", "__end__"]:
 
     if last_message.tool_calls:
         tool_names = [tc.get('name', 'unknown') for tc in last_message.tool_calls]
-        print(f"[ROUTE] 도구 호출 필요 → tools ({', '.join(tool_names)})")
+        logger.info(f"[ROUTE] 도구 호출 필요 → tools ({', '.join(tool_names)})")
         return "tools"
 
-    print("[ROUTE] 답변 완료 → 종료")
+    logger.info("[ROUTE] 답변 완료 → 종료")
     return "__end__"
 
 
@@ -95,10 +108,10 @@ def route_after_tools(state: State) -> Literal["simple_agent", "expert_agent"]:
     agent_used = state.agent_used
 
     if agent_used == "simple":
-        print("[ROUTE] 도구 실행 완료 → Simple Agent 복귀")
+        logger.info("[ROUTE] 도구 실행 완료 → Simple Agent 복귀")
         return "simple_agent"
     else:
-        print(f"[ROUTE] 도구 실행 완료 → Expert Agent ({agent_used}) 복귀")
+        logger.info(f"[ROUTE] 도구 실행 완료 → Expert Agent ({agent_used}) 복귀")
         return "expert_agent"
 
 

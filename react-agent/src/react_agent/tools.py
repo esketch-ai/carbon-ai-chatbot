@@ -279,6 +279,7 @@ def _create_mcp_tool(mcp_tool_def: Dict[str, Any]) -> Callable:
 
     # 동적 함수 생성
     async def mcp_tool_wrapper(**kwargs):
+        import time as _time
         max_retries = 2
         for attempt in range(max_retries):
             try:
@@ -292,9 +293,11 @@ def _create_mcp_tool(mcp_tool_def: Dict[str, Any]) -> Callable:
                 logger.debug(f"[NET-Z MCP] 인자: {kwargs}")
 
                 # MCP 도구 호출
+                t_mcp = _time.perf_counter()
                 result = await client.call_tool(tool_name, kwargs)
+                mcp_elapsed = _time.perf_counter() - t_mcp
 
-                logger.info(f"[NET-Z MCP] 도구 호출 성공: {tool_name}")
+                logger.info(f"⏱️ [MCP] {tool_name} {mcp_elapsed:.2f}초")
 
                 # 결과 파싱 - LangChain에 data만 직접 반환
                 content = result.get("content", [])

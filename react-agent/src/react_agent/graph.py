@@ -7,7 +7,9 @@ Works with a chat model with tool calling support.
 
 import os
 import json
+import time
 import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import Dict, List, Literal, cast, Optional, Any
 
@@ -32,6 +34,8 @@ from react_agent.cache_manager import get_cache_manager
 # Ensure .env is loaded so ANTHROPIC_API_KEY is available
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 # 병렬 도구 호출
 
 
@@ -42,12 +46,14 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
     병렬로 실행하여 결과를 state에 저장합니다.
     이를 통해 LLM이 여러 번 도구를 호출하는 것을 방지하고 속도를 개선합니다.
     """
+    t0 = time.perf_counter()
+
     # 마지막 사용자 메시지 추출
     last_human_message = None
     for msg in reversed(state.messages):
         if isinstance(msg, HumanMessage):
             last_human_message = msg.content
-            break   
+            break
 
     if not last_human_message:
         return {}
@@ -56,7 +62,8 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
     cache_manager = get_cache_manager()
     faq_answer = cache_manager.get_faq(last_human_message)
     if faq_answer:
-        print(f"FAQ 캐시 히트")
+        elapsed = time.perf_counter() - t0
+        logger.info(f"⏱️ [Prefetch] 총 {elapsed:.2f}초 (FAQ 캐시 히트)")
         return {
             "messages": [AIMessage(content=faq_answer)],
             "prefetched_context": {"source": "faq_cache"}
@@ -81,6 +88,8 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
             else:
                 prefetched_context[name] = result
 
+        elapsed = time.perf_counter() - t0
+        logger.info(f"⏱️ [Prefetch] 총 {elapsed:.2f}초")
         return {
             "prefetched_context": prefetched_context
         }
@@ -94,8 +103,12 @@ async def _safe_rag_search(query: str) -> Dict[str, Any]:
     RAG에서 문서를 찾지 못하면 웹 검색을 수행합니다.
     단, NET-Z 관련 질문은 MCP 도구를 사용해야 하므로 웹 검색을 스킵합니다.
     """
+    t_rag = time.perf_counter()
     try:
         result = search_knowledge_base.invoke({"query": query, "k": 3, "use_hybrid": True})
+        rag_elapsed = time.perf_counter() - t_rag
+        doc_count = len(result.get("results", []))
+        logger.info(f"⏱️ [Prefetch > RAG] {rag_elapsed:.2f}초 (문서 {doc_count}건)")
 
         # RAG에서 문서를 찾지 못한 경우
         if result.get("status") == "no_results":
@@ -109,15 +122,17 @@ async def _safe_rag_search(query: str) -> Dict[str, Any]:
 
             if is_netz_query:
                 # NET-Z 질문은 웹 검색 스킵, LLM이 MCP 도구 사용하도록 유도
-                print(f"🔧 NET-Z 질문 감지 → MCP 도구 사용 대기")
+                logger.info(f"🔧 NET-Z 질문 감지 → MCP 도구 사용 대기")
                 return result
 
             # 일반 질문은 웹 검색 폴백
-            print(f"🌐 웹 검색 실행 중...")
+            logger.info(f"🌐 웹 검색 실행 중...")
+            t_web = time.perf_counter()
             try:
                 web_result = await search.ainvoke({"query": query})
+                web_elapsed = time.perf_counter() - t_web
                 if web_result:
-                    print(f"✅ 웹 검색 완료")
+                    logger.info(f"⏱️ [Prefetch > 웹검색] {web_elapsed:.2f}초 (폴백)")
                     return {
                         "status": "web_fallback",
                         "message": f"지식베이스에서 관련 문서를 찾지 못해 웹 검색을 수행했습니다.",
@@ -128,12 +143,14 @@ async def _safe_rag_search(query: str) -> Dict[str, Any]:
                 else:
                     return result
             except Exception as web_error:
-                print(f"❌ 웹 검색 오류: {web_error}")
+                web_elapsed = time.perf_counter() - t_web
+                logger.error(f"❌ 웹 검색 오류 ({web_elapsed:.2f}초): {web_error}")
                 return result
 
         return result
     except Exception as e:
-        print(f"[RAG ERROR] {e}")
+        rag_elapsed = time.perf_counter() - t_rag
+        logger.error(f"[RAG ERROR] ({rag_elapsed:.2f}초) {e}")
         return {"status": "error", "message": str(e), "results": []}
 
 
@@ -447,7 +464,7 @@ def route_after_prefetch(state: State) -> Literal["call_model", "__end__"]:
     # FAQ 캐시에서 답변이 왔는지 확인
     if hasattr(state, 'prefetched_context') and state.prefetched_context:
         if state.prefetched_context.get("source") == "faq_cache":
-            print("[ROUTE] FAQ 캐시 히트, 즉시 종료")
+            logger.info("[ROUTE] FAQ 캐시 히트, 즉시 종료")
             return "__end__"
 
     # faq 캐시에 없을 경우 call_model로 진행
