@@ -23,45 +23,76 @@ async def manager_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
     """
     [매니저 에이전트] 복잡도 분석 및 에이전트 할당
 
-    Sonnet 4.5 사용 - 정확한 판단
+    tool_choice로 구조화된 JSON 응답 강제
     """
     configuration = Configuration.from_runnable_config(config)
+    category = configuration.category or "탄소배출권"
 
     # 매니저 프롬프트 생성
     system_prompt = get_agent_prompt(
         AgentRole.MANAGER,
-        configuration.category or "탄소배출권",
+        category,
         state.prefetched_context
     )
 
-    # Sonnet 모델로 판단
+    # 카테고리별 전문가 역할명 결정
+    expert_role_map = {
+        "탄소배출권": "carbon_expert",
+        "규제대응": "regulation_expert",
+        "고객상담": "support_expert",
+    }
+    expert_value = expert_role_map.get(category, "carbon_expert")
+
+    # 라우팅 판단용 도구 스키마 정의
+    route_tool = {
+        "name": "route_decision",
+        "description": "사용자 질문을 분석하고 적합한 에이전트를 배정합니다.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "complexity": {
+                    "type": "string",
+                    "enum": ["simple", "medium", "complex"],
+                    "description": "질문 복잡도"
+                },
+                "assigned_agent": {
+                    "type": "string",
+                    "enum": ["simple", expert_value],
+                    "description": "배정할 에이전트"
+                },
+                "reasoning": {
+                    "type": "string",
+                    "description": "배정 이유 (1문장)"
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "판단 확신도 (0~1)"
+                }
+            },
+            "required": ["complexity", "assigned_agent", "reasoning", "confidence"]
+        }
+    }
+
+    # Haiku 모델 + tool_choice로 구조화 출력 강제
     llm = ChatAnthropic(
         temperature=0,
-        model="claude-sonnet-4-5"
+        model="claude-haiku-4-5"
+    )
+    model = llm.bind_tools(
+        [route_tool],
+        tool_choice={"type": "tool", "name": "route_decision"}
     )
 
     try:
         t0 = time.perf_counter()
-        response = await llm.ainvoke([
+        response = await model.ainvoke([
             {"role": "system", "content": system_prompt},
             *state.messages
         ])
         llm_elapsed = time.perf_counter() - t0
 
-        # JSON 파싱
-        content = response.content.strip()
-
-        # JSON 블록 추출 (```json ... ``` 형식 처리)
-        if "```json" in content:
-            json_start = content.find("```json") + 7
-            json_end = content.find("```", json_start)
-            content = content[json_start:json_end].strip()
-        elif "```" in content:
-            json_start = content.find("```") + 3
-            json_end = content.find("```", json_start)
-            content = content[json_start:json_end].strip()
-
-        decision = json.loads(content)
+        # tool_calls에서 구조화된 결과 추출
+        decision = response.tool_calls[0]["args"]
 
         logger.info(
             f"⏱️ [Manager LLM] {llm_elapsed:.2f}초 → "
@@ -78,17 +109,6 @@ async def manager_agent(state: State, config: RunnableConfig) -> Dict[str, Any]:
             "manager_decision": decision
         }
 
-    except json.JSONDecodeError as e:
-        logger.error(f"[Manager] JSON 파싱 실패: {e}, 응답: {response.content}")
-        # 기본값으로 폴백
-        return {
-            "manager_decision": {
-                "complexity": "simple",
-                "assigned_agent": "simple",
-                "reasoning": "파싱 오류로 기본 에이전트 할당",
-                "confidence": 0.5
-            }
-        }
     except Exception as e:
         logger.error(f"[Manager] 오류: {e}", exc_info=True)
         return {
