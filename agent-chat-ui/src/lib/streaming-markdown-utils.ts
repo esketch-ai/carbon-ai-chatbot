@@ -1,9 +1,11 @@
 /**
- * 스트리밍 중 미완성 코드블록을 감지하여 ReactMarkdown에 전달하기 전에 전처리하는 유틸리티.
+ * 스트리밍 중 미완성 마크다운 요소를 감지하여 ReactMarkdown에 전달하기 전에 전처리하는 유틸리티.
  *
- * - 백틱 펜스(```)를 순회하며 열림/닫힘 추적
- * - 미완성 코드블록 발견 시 해당 부분을 잘라냄
- * - 줄 끝의 부분 펜스(` 또는 ``)도 처리
+ * 처리 대상:
+ * - 미완성 코드블록 (```)
+ * - 미완성 마크다운 테이블 (| ... |)
+ * - 줄 끝의 부분 펜스 (` 또는 ``)
+ * - 불완전한 서로게이트 페어 (이모지)
  */
 
 // 시각화 컴포넌트로 렌더링되는 언어 목록
@@ -23,6 +25,8 @@ export interface PreprocessResult {
   hasIncompleteCodeBlock: boolean;
   /** 미완성 코드블록의 언어 (없으면 null) */
   language: string | null;
+  /** 미완성 테이블이 존재하는지 여부 */
+  hasIncompleteTable: boolean;
 }
 
 /**
@@ -41,6 +45,87 @@ export function getVisualizationLabel(language: string): string {
 }
 
 /**
+ * 텍스트 끝부분에 미완성 마크다운 테이블이 있는지 감지하고,
+ * 있다면 테이블 시작 지점과 완성 여부를 반환.
+ *
+ * 완성된 테이블 조건:
+ * - 헤더 행 (| ... |)
+ * - 구분자 행 (|---|---|)
+ * - 최소 1개의 데이터 행
+ * - 테이블 뒤에 빈 줄이 있거나 테이블이 아닌 텍스트가 이어짐
+ *
+ * 미완성 판정:
+ * - 텍스트가 테이블 행으로 끝남 (마지막 줄이 | 로 시작)
+ * - 구분자 행이 아직 안 왔거나, 테이블이 아직 작성 중
+ */
+function detectIncompleteTable(text: string): {
+  isIncomplete: boolean;
+  tableStartIndex: number;
+} {
+  const lines = text.split("\n");
+
+  // 뒤에서부터 테이블 행이 이어지는 구간을 찾음
+  let tableEndLine = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmed = lines[i].trim();
+    if (trimmed.startsWith("|")) {
+      if (tableEndLine === -1) tableEndLine = i;
+    } else {
+      break;
+    }
+  }
+
+  // 테이블 행이 없으면 미완성 아님
+  if (tableEndLine === -1) {
+    return { isIncomplete: false, tableStartIndex: -1 };
+  }
+
+  // 테이블의 시작 줄 찾기 (연속된 | 줄의 첫번째)
+  let tableStartLine = tableEndLine;
+  for (let i = tableEndLine; i >= 0; i--) {
+    const trimmed = lines[i].trim();
+    if (trimmed.startsWith("|")) {
+      tableStartLine = i;
+    } else {
+      break;
+    }
+  }
+
+  // 테이블 줄들 추출
+  const tableLines = lines.slice(tableStartLine, tableEndLine + 1);
+
+  // 구분자 행이 있는지 확인 (|---|---|  또는  | --- | --- |)
+  const hasSeparator = tableLines.some((line) =>
+    /^\|[\s\-:|]+\|$/.test(line.trim()),
+  );
+
+  // 텍스트의 마지막이 테이블 행으로 끝나면 → 아직 작성 중
+  const lastLine = lines[lines.length - 1].trim();
+  const endsWithTableRow = lastLine.startsWith("|");
+
+  // 미완성 판정: 마지막 줄이 테이블이고, (구분자가 없거나 테이블이 끝나지 않은 경우)
+  // 구분자가 있어도 텍스트가 테이블 행으로 끝나면 아직 행이 추가될 수 있음
+  if (endsWithTableRow) {
+    // 구분자가 없으면 확실히 미완성 (헤더만 있거나 구분자 작성 중)
+    if (!hasSeparator) {
+      const charOffset = lines.slice(0, tableStartLine).join("\n").length;
+      const startIndex = tableStartLine === 0 ? 0 : charOffset + 1;
+      return { isIncomplete: true, tableStartIndex: startIndex };
+    }
+
+    // 구분자가 있고, 마지막 줄이 불완전한 행인지 확인
+    // (닫는 | 가 없는 경우)
+    if (!lastLine.endsWith("|")) {
+      const charOffset = lines.slice(0, tableStartLine).join("\n").length;
+      const startIndex = tableStartLine === 0 ? 0 : charOffset + 1;
+      return { isIncomplete: true, tableStartIndex: startIndex };
+    }
+  }
+
+  return { isIncomplete: false, tableStartIndex: -1 };
+}
+
+/**
  * 스트리밍 텍스트를 ReactMarkdown에 넘기기 전에 전처리.
  *
  * isStreaming === false 이면 전처리 없이 원본 그대로 반환.
@@ -49,13 +134,20 @@ export function preprocessStreamingMarkdown(
   text: string,
   isStreaming: boolean,
 ): PreprocessResult {
+  const defaultResult: PreprocessResult = {
+    processed: text,
+    hasIncompleteCodeBlock: false,
+    language: null,
+    hasIncompleteTable: false,
+  };
+
   // 스트리밍이 아닌 경우 원본 그대로 반환
   if (!isStreaming) {
-    return { processed: text, hasIncompleteCodeBlock: false, language: null };
+    return defaultResult;
   }
 
   if (!text) {
-    return { processed: "", hasIncompleteCodeBlock: false, language: null };
+    return { ...defaultResult, processed: "" };
   }
 
   // 불완전한 서로게이트 페어(이모지 등) 처리:
@@ -83,6 +175,7 @@ export function preprocessStreamingMarkdown(
       processed: trimmed,
       hasIncompleteCodeBlock: false,
       language: null,
+      hasIncompleteTable: false,
     };
   }
 
@@ -106,22 +199,30 @@ export function preprocessStreamingMarkdown(
     }
   }
 
-  // 열린 펜스가 없으면 그대로 반환
-  if (openFenceIndex === -1) {
-    return { processed: text, hasIncompleteCodeBlock: false, language: null };
+  // 미완성 코드블록이 있으면 잘라냄
+  if (openFenceIndex !== -1) {
+    const safeText = text.slice(0, openFenceIndex).trimEnd();
+
+    return {
+      processed: safeText,
+      hasIncompleteCodeBlock: true,
+      language: openLanguage,
+      hasIncompleteTable: false,
+    };
   }
 
-  // 미완성 코드블록이 시각화 언어인지 확인
-  const isVisualization =
-    openLanguage !== null &&
-    VISUALIZATION_LANGUAGES.includes(openLanguage.toLowerCase());
+  // 미완성 테이블 감지
+  const tableResult = detectIncompleteTable(text);
+  if (tableResult.isIncomplete) {
+    const safeText = text.slice(0, tableResult.tableStartIndex).trimEnd();
 
-  // 미완성 코드블록 부분을 잘라냄
-  const safeText = text.slice(0, openFenceIndex).trimEnd();
+    return {
+      processed: safeText,
+      hasIncompleteCodeBlock: false,
+      language: null,
+      hasIncompleteTable: true,
+    };
+  }
 
-  return {
-    processed: safeText,
-    hasIncompleteCodeBlock: true,
-    language: isVisualization ? openLanguage : openLanguage,
-  };
+  return defaultResult;
 }
