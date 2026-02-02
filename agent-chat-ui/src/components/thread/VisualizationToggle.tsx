@@ -22,16 +22,6 @@ export function VisualizationToggle({
   className,
 }: VisualizationToggleProps) {
   const [activeTab, setActiveTab] = useState<"preview" | "code">("code");
-  const hasBeenReady = useRef(false);
-
-  // 스트리밍 완료 시 자동으로 미리보기 탭으로 전환 (최초 1회)
-  useEffect(() => {
-    if (!isStreaming && !hasBeenReady.current) {
-      hasBeenReady.current = true;
-      setActiveTab("preview");
-    }
-  }, [isStreaming]);
-
   const isReady = !isStreaming;
   const showPreview = activeTab === "preview" && isReady;
 
