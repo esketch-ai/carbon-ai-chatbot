@@ -232,7 +232,7 @@ class SSEMCPClient:
                 )
 
                 if response.status_code == 200:
-                    logger.info(f"[Pong] ✅ 전송 성공 (ID={ping_id})")
+                    logger.debug(f"[Pong] ✅ 전송 성공 (ID={ping_id})")
                     self.stats["pongs_sent"] += 1
                     return
                 else:
@@ -534,7 +534,7 @@ class SSEMCPClient:
             logger.warning("[Ping] ID 없는 ping - JSON-RPC 표준 위반")
             return
         
-        logger.info(f"[Ping] 🏓 수신 (ID={ping_id})")
+        logger.debug(f"[Ping] 🏓 수신 (ID={ping_id})")
         self.stats["pings_received"] += 1
         
         # JSON-RPC 2.0 표준 pong 응답 생성
