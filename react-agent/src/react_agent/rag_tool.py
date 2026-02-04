@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import os
 import logging
+import time
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
 from react_agent.cache_manager import get_cache_manager
 
 try:
@@ -20,7 +21,11 @@ try:
 except ImportError:
     RAG_AVAILABLE = False
 
+if TYPE_CHECKING:
+    from react_agent.knowledge_graph import Neo4jGraphManager
+
 logger = logging.getLogger(__name__)
+perf_logger = logging.getLogger("perf")
 
 
 class RAGTool:
@@ -106,6 +111,9 @@ class RAGTool:
         self._bm25_index: Optional['BM25Okapi'] = None
         self._bm25_documents: List[Document] = []
 
+        # 그래프 매니저 (지연 로딩)
+        self._graph_manager: Optional['Neo4jGraphManager'] = None
+
         # 지식베이스 변경 감지 초기화
         self._update_kb_modified_time()
 
@@ -167,6 +175,66 @@ class RAGTool:
                         break
 
         return keywords
+
+    def _generate_chunk_contexts(
+        self, chunks: List[str], full_text: str, filename: str
+    ) -> List[str]:
+        """각 청크에 대한 문맥 요약 생성 (Contextual Retrieval)
+
+        Claude Haiku를 사용하여 전체 문서 내에서 각 청크의 위치와 맥락을
+        50~100토큰 분량으로 요약합니다.
+
+        Args:
+            chunks: 청크 텍스트 리스트
+            full_text: 문서 전체 텍스트
+            filename: 파일명 (로깅용)
+
+        Returns:
+            각 청크에 대한 문맥 요약 리스트 (에러 시 빈 문자열)
+        """
+        try:
+            from langchain_anthropic import ChatAnthropic
+
+            llm = ChatAnthropic(
+                model="claude-haiku-4-20250514",
+                max_tokens=256,
+                temperature=0.0,
+            )
+        except Exception as e:
+            logger.warning(f"Claude Haiku 초기화 실패, 문맥 생성 건너뜀: {e}")
+            return [""] * len(chunks)
+
+        # 전체 문서가 너무 길면 앞부분만 사용 (토큰 제한)
+        max_doc_chars = 15000
+        doc_preview = full_text[:max_doc_chars]
+        if len(full_text) > max_doc_chars:
+            doc_preview += "\n...(이하 생략)"
+
+        contexts = []
+        for i, chunk in enumerate(chunks):
+            try:
+                prompt = (
+                    f"<document>\n{doc_preview}\n</document>\n\n"
+                    f"다음은 위 문서의 일부(청크)입니다:\n"
+                    f"<chunk>\n{chunk}\n</chunk>\n\n"
+                    f"이 청크가 문서 전체에서 어떤 맥락에 위치하는지 간결하게 설명하세요. "
+                    f"50~100토큰 이내로, 한국어로 작성하세요. "
+                    f"'이 청크는...' 같은 메타 표현 없이, "
+                    f"문서의 주제와 이 부분의 핵심 내용만 서술하세요."
+                )
+                response = llm.invoke(prompt)
+                context = response.content.strip() if response.content else ""
+                contexts.append(context)
+                logger.debug(f"[문맥 생성] {filename} 청크 {i+1}/{len(chunks)}: {context[:50]}...")
+            except Exception as e:
+                logger.warning(f"[문맥 생성] {filename} 청크 {i+1} 실패: {e}")
+                contexts.append("")
+
+        generated_count = sum(1 for c in contexts if c)
+        logger.info(
+            f"[문맥 생성] {filename}: {generated_count}/{len(chunks)}개 청크 문맥 생성 완료"
+        )
+        return contexts
 
     def _load_documents(self) -> List[Document]:
         """지식베이스에서 문서 로드 및 청킹"""
@@ -236,6 +304,11 @@ class RAGTool:
 
                     chunks = self.text_splitter.split_text(content)
 
+                    # Contextual Retrieval: 각 청크에 문맥 요약 생성
+                    contexts = self._generate_chunk_contexts(
+                        chunks, content, file_path.name
+                    )
+
                     for i, chunk in enumerate(chunks):
                         # 청크 위치 정보
                         if len(chunks) == 1:
@@ -259,8 +332,15 @@ class RAGTool:
                         # 키워드 추출
                         keywords = self._extract_keywords_from_text(chunk, max_keywords=5)
 
+                        # 문맥이 있으면 page_content에 추가 (임베딩 품질 향상)
+                        context = contexts[i] if i < len(contexts) else ""
+                        if context:
+                            enriched_content = f"{context}\n\n{chunk}"
+                        else:
+                            enriched_content = chunk
+
                         doc = Document(
-                            page_content=chunk,
+                            page_content=enriched_content,
                             metadata={
                                 'source': str(file_path),
                                 'filename': file_path.name,
@@ -271,6 +351,7 @@ class RAGTool:
                                 'chunk_length': len(chunk),
                                 'section_title': section_title,
                                 'keywords': ', '.join(keywords),
+                                'original_content': chunk,
                             }
                         )
                         documents.append(doc)
@@ -366,7 +447,12 @@ class RAGTool:
                 documents=documents,
                 embedding=self.embeddings,
                 persist_directory=str(self.chroma_db_path),
-                collection_metadata={"hnsw:space": "cosine"}
+                collection_metadata={
+                    "hnsw:space": "cosine",
+                    "hnsw:construction_ef": 200,
+                    "hnsw:search_ef": 100,
+                    "hnsw:M": 32,
+                }
             )
 
             logger.info(f"✓ 벡터 DB 구축 완료: {len(documents)}개 문서 (distance: cosine)")
@@ -471,6 +557,23 @@ class RAGTool:
             self._build_bm25_index()
         return self._bm25_index
 
+    @property
+    def graph_manager(self) -> Optional['Neo4jGraphManager']:
+        """Neo4j 그래프 매니저 지연 로딩"""
+        if self._graph_manager is None and self.available:
+            try:
+                from react_agent.knowledge_graph import get_graph_manager
+                self._graph_manager = get_graph_manager()
+                if self._graph_manager.available:
+                    self._graph_manager.connect()
+                    logger.info("Neo4j 그래프 매니저 연결 완료")
+                else:
+                    logger.warning("Neo4j 그래프 매니저를 사용할 수 없습니다.")
+            except Exception as e:
+                logger.warning(f"Neo4j 그래프 매니저 로딩 실패: {e}")
+                self._graph_manager = None
+        return self._graph_manager
+
     def search_documents(self, query: str, k: int = 3, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
         """
         문서 검색 (코사인 유사도 기반)
@@ -536,7 +639,7 @@ class RAGTool:
                 seen_keys.add(doc_key)
 
                 filtered_docs.append({
-                    'content': doc.page_content,
+                    'content': doc.metadata.get('original_content', doc.page_content),
                     'source': source,
                     'filename': doc.metadata.get('filename', 'unknown'),
                     'chunk_index': chunk_index,
@@ -764,7 +867,7 @@ class RAGTool:
 
                 doc = result['doc']
                 filtered_docs.append({
-                    'content': doc.page_content,
+                    'content': doc.metadata.get('original_content', doc.page_content),
                     'source': doc.metadata.get('source', 'unknown'),
                     'filename': doc.metadata.get('filename', 'unknown'),
                     'chunk_index': doc.metadata.get('chunk_index', 0),
@@ -799,6 +902,361 @@ class RAGTool:
         except Exception as e:
             logger.error(f"[하이브리드] 검색 실패: {e}", exc_info=True)
             return []
+
+    def search_documents_graph(
+        self,
+        query: str,
+        k: int = 3,
+        similarity_threshold: float = 0.7,
+        graph_boost: float = 0.3
+    ) -> List[Dict[str, Any]]:
+        """
+        그래프 기반 하이브리드 검색 (벡터 + Neo4j 주제 확장)
+
+        알고리즘:
+        1. 벡터 검색으로 top k*3 후보 조회
+        2. Neo4j에서 주제/인접 청크 확장
+        3. 최종 점수 = vector_score + graph_boost (cap 1.0)
+        4. threshold 필터링 → top-k 반환
+
+        Args:
+            query: 검색 쿼리
+            k: 반환할 문서 수
+            similarity_threshold: 최소 유사도 임계값
+            graph_boost: 그래프 연결 청크의 추가 점수 (부모 점수 × boost)
+
+        Returns:
+            관련 문서 리스트
+        """
+        if not self.available or self.vectorstore is None:
+            return []
+
+        self._check_kb_changed()
+
+        # 캐시 확인
+        cache_manager = get_cache_manager()
+        cache_content = f"graph|{query}|k={k}|threshold={similarity_threshold}|boost={graph_boost}"
+        cached_result = cache_manager.get("rag", cache_content)
+        if cached_result is not None:
+            return cached_result
+
+        try:
+            t_total_start = time.perf_counter()
+            normalized_query = self._normalize_query(query)
+            logger.info(f"[그래프 검색] 쿼리: '{normalized_query}'")
+
+            # 1. 벡터 검색: top k*3 후보
+            t_vector_start = time.perf_counter()
+            logger.debug(f"[임베딩 입력] \"{normalized_query}\"")
+            vector_docs = self.vectorstore.similarity_search_with_score(
+                normalized_query, k=k * 3
+            )
+            vector_elapsed = time.perf_counter() - t_vector_start
+
+            if not vector_docs:
+                logger.warning("[그래프 검색] 벡터 검색 결과 없음")
+                cache_manager.set("rag", cache_content, [], ttl=3600)
+                return []
+
+            logger.info(f"[그래프 검색] 벡터 후보: {len(vector_docs)}개")
+            perf_logger.info(f"⏱️ [그래프 검색 > 벡터] {vector_elapsed:.2f}초 (쿼리: \"{normalized_query[:50]}...\", 후보: {len(vector_docs)})")
+
+            # 벡터 결과를 dict로 저장 (점수 포함)
+            vector_results: Dict[Tuple[str, int], Dict[str, Any]] = {}
+            for doc, distance in vector_docs:
+                filename = doc.metadata.get('filename', '')
+                source = doc.metadata.get('source', '')
+                chunk_index = doc.metadata.get('chunk_index', 0)
+                doc_key = (source, chunk_index)
+
+                # cosine distance → similarity
+                similarity = max(0.0, 1.0 - min(distance, 2.0))
+
+                vector_results[doc_key] = {
+                    'doc': doc,
+                    'filename': filename,
+                    'source': source,
+                    'chunk_index': chunk_index,
+                    'vector_score': similarity,
+                    'graph_boost': 0.0,
+                    'is_graph_expanded': False
+                }
+
+            # 2. 그래프 확장
+            t_graph_start = time.perf_counter()
+            graph_manager = self.graph_manager
+            expanded_chunks: Dict[Tuple[str, int], Dict[str, Any]] = {}
+
+            if graph_manager and graph_manager.available:
+                # 벡터 결과의 청크 ID 추출 (filename으로 조회)
+                chunk_ids = [
+                    (v['filename'], v['chunk_index'])
+                    for v in vector_results.values()
+                ]
+
+                # Neo4j에서 관련 청크 조회
+                related_map = graph_manager.get_related_chunks(chunk_ids)
+
+                for parent_key, related in related_map.items():
+                    # parent_key는 (filename, chunk_index)
+                    # vector_results의 key는 (source, chunk_index)
+                    # 매핑 필요: filename으로 source 찾기
+                    parent_result = None
+                    for vk, vv in vector_results.items():
+                        if vv['filename'] == parent_key[0] and vv['chunk_index'] == parent_key[1]:
+                            parent_result = vv
+                            break
+
+                    if parent_result is None:
+                        continue
+
+                    parent_score = parent_result['vector_score']
+
+                    # 개념 연결 청크 (주요 확장)
+                    for filename, chunk_index, shared_concepts in related.get('concept_related', []):
+                        expanded_key = (filename, chunk_index)
+
+                        if expanded_key in vector_results:
+                            # 이미 벡터 결과에 있으면 boost만 추가
+                            # 동일 source로 매핑
+                            for vk, vv in vector_results.items():
+                                if vv['filename'] == filename and vv['chunk_index'] == chunk_index:
+                                    current_boost = vv['graph_boost']
+                                    new_boost = parent_score * graph_boost
+                                    vv['graph_boost'] = max(current_boost, new_boost)
+                                    vv['is_graph_expanded'] = True
+                                    break
+                        else:
+                            # 새로운 청크 추가
+                            boost_score = parent_score * graph_boost
+
+                            if expanded_key not in expanded_chunks:
+                                expanded_chunks[expanded_key] = {
+                                    'filename': filename,
+                                    'chunk_index': chunk_index,
+                                    'vector_score': 0.0,  # 벡터 결과에 없음
+                                    'graph_boost': boost_score,
+                                    'is_graph_expanded': True,
+                                    'expansion_concepts': shared_concepts,
+                                    'parent_chunk': parent_key
+                                }
+                            else:
+                                # 이미 다른 부모에서 확장됨 → boost 최대값 유지
+                                expanded_chunks[expanded_key]['graph_boost'] = max(
+                                    expanded_chunks[expanded_key]['graph_boost'],
+                                    boost_score
+                                )
+
+                    # 인접 청크 (보조 확장, 낮은 boost)
+                    for filename, chunk_index in related.get('neighbors', []):
+                        neighbor_key = (filename, chunk_index)
+                        neighbor_boost = parent_score * graph_boost * 0.5  # 인접은 절반
+
+                        if neighbor_key in vector_results:
+                            for vk, vv in vector_results.items():
+                                if vv['filename'] == filename and vv['chunk_index'] == chunk_index:
+                                    # 주제 확장보다 인접 확장이 우선되지 않도록 max 사용
+                                    if not vv['is_graph_expanded']:
+                                        vv['graph_boost'] = max(vv['graph_boost'], neighbor_boost)
+                                        vv['is_graph_expanded'] = True
+                                    break
+                        elif neighbor_key not in expanded_chunks:
+                            expanded_chunks[neighbor_key] = {
+                                'filename': filename,
+                                'chunk_index': chunk_index,
+                                'vector_score': 0.0,
+                                'graph_boost': neighbor_boost,
+                                'is_graph_expanded': True,
+                                'expansion_topic': 'neighbor',
+                                'parent_chunk': parent_key
+                            }
+
+                graph_elapsed = time.perf_counter() - t_graph_start
+                logger.info(f"[그래프 검색] 그래프 확장: {len(expanded_chunks)}개 추가 청크")
+                perf_logger.info(f"⏱️ [그래프 검색 > 그래프 확장] {graph_elapsed:.2f}초 (확장: {len(expanded_chunks)})")
+
+            # 3. 확장된 청크의 문서 내용 로드 (벡터 DB에서 조회)
+            if expanded_chunks and self.vectorstore is not None:
+                collection = self.vectorstore._collection
+                for expanded_key, expanded_info in expanded_chunks.items():
+                    filename = expanded_info['filename']
+                    chunk_index = expanded_info['chunk_index']
+
+                    # ChromaDB에서 해당 청크 조회
+                    try:
+                        results = collection.get(
+                            where={
+                                "$and": [
+                                    {"filename": {"$eq": filename}},
+                                    {"chunk_index": {"$eq": chunk_index}}
+                                ]
+                            },
+                            include=['documents', 'metadatas']
+                        )
+
+                        if results and results['documents'] and len(results['documents']) > 0:
+                            doc_text = results['documents'][0]
+                            metadata = results['metadatas'][0] if results['metadatas'] else {}
+                            expanded_info['doc'] = Document(
+                                page_content=doc_text,
+                                metadata=metadata
+                            )
+                            expanded_info['source'] = metadata.get('source', '')
+                    except Exception as e:
+                        logger.warning(f"확장 청크 조회 실패 ({filename}:{chunk_index}): {e}")
+
+            # 4. 모든 결과 통합 및 점수 계산
+            all_results: Dict[Tuple[str, int], Dict[str, Any]] = {}
+
+            # 벡터 결과 추가
+            for key, result in vector_results.items():
+                final_score = result['vector_score'] + result['graph_boost']
+                final_score = min(final_score, 1.0)  # cap at 1.0
+                all_results[key] = {
+                    **result,
+                    'final_score': final_score
+                }
+
+            # 확장된 청크 추가 (문서가 로드된 것만)
+            for key, result in expanded_chunks.items():
+                if 'doc' in result:
+                    final_score = result['vector_score'] + result['graph_boost']
+                    final_score = min(final_score, 1.0)
+                    # source로 key 변환
+                    source_key = (result.get('source', key[0]), key[1])
+                    if source_key not in all_results:
+                        all_results[source_key] = {
+                            **result,
+                            'final_score': final_score
+                        }
+
+            # 5. 점수 기준 정렬
+            sorted_results = sorted(
+                all_results.items(),
+                key=lambda x: x[1]['final_score'],
+                reverse=True
+            )
+
+            # 6. 필터링 및 결과 생성
+            filtered_docs = []
+            rejected_count = 0
+
+            for doc_key, result in sorted_results:
+                final_score = result['final_score']
+
+                if final_score < similarity_threshold:
+                    rejected_count += 1
+                    continue
+
+                doc = result.get('doc')
+                if doc is None:
+                    continue
+
+                filtered_docs.append({
+                    'content': doc.metadata.get('original_content', doc.page_content),
+                    'source': doc.metadata.get('source', result.get('source', 'unknown')),
+                    'filename': doc.metadata.get('filename', result.get('filename', 'unknown')),
+                    'chunk_index': doc.metadata.get('chunk_index', result.get('chunk_index', 0)),
+                    'similarity': float(final_score),
+                    'vector_score': float(result['vector_score']),
+                    'graph_boost': float(result['graph_boost']),
+                    'is_graph_expanded': result.get('is_graph_expanded', False)
+                })
+
+                if len(filtered_docs) >= k:
+                    break
+
+            if not filtered_docs:
+                logger.warning(
+                    f"[그래프 검색] 임계값 {similarity_threshold} 미만: "
+                    f"{len(sorted_results)}개 결과 모두 제외됨"
+                )
+                cache_manager.set("rag", cache_content, [], ttl=3600)
+                return []
+
+            logger.info(f"[그래프 검색] 결과: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
+
+            for idx, doc in enumerate(filtered_docs[:5]):
+                graph_tag = " [GRAPH]" if doc['is_graph_expanded'] else ""
+                logger.info(
+                    f"  #{idx+1}: {doc['filename']} "
+                    f"(final: {doc['similarity']:.3f} = vec: {doc['vector_score']:.3f} + boost: {doc['graph_boost']:.3f}){graph_tag}"
+                )
+
+            total_elapsed = time.perf_counter() - t_total_start
+            perf_logger.info(f"⏱️ [그래프 검색] 총 {total_elapsed:.2f}초 (결과: {len(filtered_docs)}건)")
+
+            cache_manager.set("rag", cache_content, filtered_docs)
+            return filtered_docs
+
+        except Exception as e:
+            logger.error(f"[그래프 검색] 검색 실패: {e}", exc_info=True)
+            return []
+
+    async def build_knowledge_graph(self) -> bool:
+        """지식 그래프 구축 (인덱싱 시 호출)
+
+        ChromaDB의 문서들을 Neo4j 그래프로 변환합니다.
+        각 청크에서 LLM으로 개념을 추출하고 도메인 기반 그래프를 구축합니다.
+        - Domain 노드: 금융, 공공, 의료, 법률, 상업
+        - Chunk 노드: 개념 정보 포함
+        - RELATED_TO 관계: 공유 개념 기반 청크 연결
+
+        Returns:
+            성공 여부
+        """
+        graph_manager = self.graph_manager
+        if graph_manager is None or not graph_manager.available:
+            logger.warning("Neo4j 그래프 매니저를 사용할 수 없습니다.")
+            return False
+
+        if self.vectorstore is None:
+            logger.warning("벡터 스토어가 없습니다. 먼저 벡터 DB를 구축하세요.")
+            return False
+
+        try:
+            # ChromaDB에서 모든 문서 조회
+            collection = self.vectorstore._collection
+            results = collection.get(include=['documents', 'metadatas'])
+
+            if not results or not results['documents']:
+                logger.warning("ChromaDB에 문서가 없습니다.")
+                return False
+
+            # Document 형식으로 변환
+            documents = []
+            for doc_text, metadata in zip(results['documents'], results['metadatas'] or [{}] * len(results['documents'])):
+                documents.append({
+                    'page_content': doc_text,
+                    'metadata': metadata or {}
+                })
+
+            logger.info(f"지식 그래프 구축 시작: {len(documents)}개 문서")
+            print(f"[DEBUG] 지식 그래프 구축 시작: {len(documents)}개 문서")
+
+            # 디버깅: 첫 문서 확인
+            if documents:
+                logger.info(f"첫 문서 샘플: metadata={documents[0].get('metadata', {})}")
+                print(f"[DEBUG] 첫 문서 샘플: metadata={documents[0].get('metadata', {})}")
+            else:
+                logger.warning("문서가 비어있습니다!")
+                print(f"[DEBUG] 문서가 비어있습니다!")
+
+            # 기존 그래프 초기화 (선택적)
+            # graph_manager.clear_graph()
+
+            # 그래프 구축
+            success = await graph_manager.build_graph(documents)
+
+            if success:
+                stats = graph_manager.get_graph_stats()
+                logger.info(f"✓ 지식 그래프 구축 완료: {stats}")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"지식 그래프 구축 실패: {e}", exc_info=True)
+            return False
 
 
 # 전역 RAG 도구 인스턴스

@@ -48,15 +48,15 @@ async def search(query: str) -> Optional[dict[str, Any]]:
 def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> dict[str, Any]:
     """회사 지식베이스에서 관련 문서를 검색합니다.
 
-    이 도구는 하이브리드 검색(BM25 + 벡터)을 사용하여 탄소 배출권 관련 문서를 찾습니다.
+    이 도구는 탄소 배출권 관련 문서를 찾습니다.
     배출권 거래, 구매/판매 절차, NET-Z 플랫폼 사용법 등에 대한 질문에 사용하세요.
 
-    **검색 방식**:
-    - **하이브리드 검색 (기본, RRF)**: BM25 + 벡터 검색을 Reciprocal Rank Fusion으로 결합
-      - BM25: 키워드 매칭 기반 검색 (정확한 용어 검색에 강함)
-      - 벡터: 의미 기반 검색 (문맥 이해에 강함)
-      - RRF: 순위 기반 융합으로 점수 스케일에 robust하게 결합
-    - **벡터 검색 전용**: use_hybrid=False로 설정 시 기존 벡터 검색만 사용
+    **검색 방식** (RAG_SEARCH_MODE 환경변수로 선택):
+    - **vector_only (기본)**: Contextual Retrieval 기반 벡터 검색
+      - 각 청크에 LLM이 생성한 문맥 요약이 포함되어 임베딩 품질 향상
+      - HNSW 최적화 (M=32, search_ef=100)로 높은 재현율
+    - **graph**: 벡터 + Neo4j 주제 기반 그래프 확장
+    - **bm25**: BM25 + 벡터 검색을 Reciprocal Rank Fusion으로 결합
     - **프로덕션 품질**: 임계값 0.7 이상의 고품질 결과만 반환 (정확도 우선)
     - 쿼리는 최소한의 정규화(공백 정리)만 수행됩니다.
     - 중복된 문서는 자동으로 제거됩니다.
@@ -70,8 +70,10 @@ def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> di
         query: 검색할 사용자의 전체 질문 (예: "배출권을 구매하려면 어떤 절차를 거쳐야 하나요?")
             - 키워드만이 아닌 전체 질문을 그대로 전달해야 합니다.
             - 질문의 맥락, 의도, 세부사항을 모두 포함해야 합니다.
-        k: 반환할 문서 수 (기본값: 3)
-        use_hybrid: 하이브리드 검색 사용 여부 (기본값: True, 더 정확한 검색)
+        k: 반환할 문서 수 (기본값: 5)
+        use_hybrid: 하이브리드 검색 사용 여부 (기본값: True)
+            - True: RAG_SEARCH_MODE에 따라 graph 또는 bm25 검색
+            - False: 벡터 검색만 사용
 
     Returns:
         검색된 문서들의 정보를 포함한 딕셔너리
@@ -79,21 +81,38 @@ def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> di
     """
     rag_tool = get_rag_tool()
 
-    if use_hybrid:
-        # 하이브리드 검색 (RRF - Reciprocal Rank Fusion)
-        # alpha < 0: RRF 방식 (순위 기반 융합, 더 robust)
-        # alpha >= 0: 가중 평균 방식 (alpha * vector + (1-alpha) * bm25)
+    # 검색 모드 결정 (환경변수 기반)
+    search_mode = os.getenv("RAG_SEARCH_MODE", "vector_only").lower()
+
+    if not use_hybrid:
+        # use_hybrid=False면 벡터 검색만
+        search_mode = "vector_only"
+
+    if search_mode == "graph":
+        # 그래프 기반 하이브리드 검색 (벡터 + Neo4j 주제 확장)
+        results = rag_tool.search_documents_graph(
+            query,
+            k=k,
+            similarity_threshold=0.7,
+            graph_boost=0.3
+        )
+        threshold_msg = "그래프 점수 0.7"
+        search_type = "그래프"
+    elif search_mode == "bm25":
+        # BM25 + 벡터 하이브리드 검색 (RRF)
         results = rag_tool.search_documents_hybrid(
             query,
             k=k,
             alpha=-1,  # RRF 방식 활성화
-            similarity_threshold=0.7  # 프로덕션 품질: 정확도 우선
+            similarity_threshold=0.7
         )
         threshold_msg = "하이브리드 점수 0.7"
+        search_type = "BM25+벡터"
     else:
         # 벡터 검색 전용
         results = rag_tool.search_documents(query, k=k, similarity_threshold=0.7)
         threshold_msg = "유사도 0.7"
+        search_type = "벡터"
 
     if not results:
         return {
@@ -102,7 +121,6 @@ def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> di
             "results": []
         }
 
-    search_type = "하이브리드" if use_hybrid else "벡터"
     return {
         "status": "success",
         "message": f"{len(results)}개의 관련 문서를 찾았습니다 ({search_type} 검색, {threshold_msg} 이상).",
