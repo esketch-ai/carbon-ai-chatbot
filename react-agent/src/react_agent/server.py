@@ -158,13 +158,32 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# CORS middleware - 환경변수 기반 origin 제한
+_origins_env = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,https://carbon-ai-chatbot.vercel.app"
+)
+
+# 빈 문자열 및 와일드카드 필터링
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in _origins_env.split(",")
+    if origin.strip() and origin.strip() != "*"
+]
+
+# 기본값 폴백 (필터링 후 비어있으면)
+if not ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS = ["http://localhost:3000"]
+    logger.warning("ALLOWED_ORIGINS가 비어있어 기본값 사용: http://localhost:3000")
+
+logger.info(f"CORS 허용 origins: {ALLOWED_ORIGINS}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 프로덕션에서는 특정 도메인으로 제한
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
 
