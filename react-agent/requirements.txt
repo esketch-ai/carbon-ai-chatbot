@@ -36,5 +36,11 @@ tavily-python>=0.3.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 
+# System Monitoring
+psutil>=5.9.0
+
+# Rate Limiting
+slowapi>=0.1.9
+
 # Graph Database
 neo4j>=5.0

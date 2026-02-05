@@ -6,6 +6,8 @@ import json
 import time
 import logging
 import asyncio
+import psutil
+from datetime import datetime
 from typing import Any, Dict, Optional, List
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +24,7 @@ from react_agent.configuration import Configuration  # 기존 설정 클래스
 from langchain_core.messages import AIMessage, HumanMessage   # 랭체인 메세지 타입 임포트
 from react_agent.rag_tool import get_rag_tool  # RAG 도구
 from react_agent.input_sanitizer import sanitize_user_input, detect_prompt_injection  # 입력 검증
+from react_agent.cache_manager import get_cache_manager  # 캐시 매니저
 
 # Load environment variables
 load_dotenv()
@@ -286,12 +289,205 @@ class ChatResponse(BaseModel):
     thread_id: str = Field(..., description="Thread ID")
 
 
-# Health check endpoint
+# ============= Health Check Helper Functions =============
+
+async def check_vectordb() -> Dict[str, Any]:
+    """VectorDB (ChromaDB) 상태 확인"""
+    try:
+        rag_tool = get_rag_tool()
+        if not rag_tool.available:
+            return {
+                "status": "unavailable",
+                "message": "RAG 라이브러리가 설치되지 않음"
+            }
+
+        vectorstore = rag_tool.vectorstore
+        if vectorstore is None:
+            return {
+                "status": "unavailable",
+                "message": "벡터 DB가 아직 구축되지 않음"
+            }
+
+        # 문서 수 확인
+        collection = vectorstore._collection
+        doc_count = collection.count()
+
+        return {
+            "status": "healthy",
+            "document_count": doc_count,
+            "db_path": str(rag_tool.chroma_db_path)
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+
+async def check_redis() -> Dict[str, Any]:
+    """Redis 캐시 상태 확인"""
+    try:
+        cache_manager = get_cache_manager()
+        stats = cache_manager.get_stats()
+
+        if stats.get("backend") == "redis":
+            return {
+                "status": "healthy",
+                "backend": "redis",
+                "keys": stats.get("redis_keys", 0),
+                "hits": stats.get("redis_hits", 0),
+                "misses": stats.get("redis_misses", 0)
+            }
+        else:
+            return {
+                "status": "healthy",
+                "backend": "memory",
+                "cache_size": stats.get("memory_cache_size", 0),
+                "message": "Redis가 구성되지 않음, 메모리 캐시 사용 중"
+            }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+
+async def check_anthropic_api() -> Dict[str, Any]:
+    """Anthropic API 상태 확인"""
+    try:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            return {
+                "status": "unavailable",
+                "message": "ANTHROPIC_API_KEY가 설정되지 않음"
+            }
+
+        # API 키 형식 확인 (실제 호출 없이 기본 검증)
+        if not api_key.startswith("sk-ant-"):
+            return {
+                "status": "warning",
+                "message": "API 키 형식이 예상과 다름"
+            }
+
+        return {
+            "status": "healthy",
+            "message": "API 키 구성됨"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+
+async def check_tavily_api() -> Dict[str, Any]:
+    """Tavily API (웹 검색) 상태 확인"""
+    try:
+        api_key = os.getenv("TAVILY_API_KEY")
+        if not api_key:
+            return {
+                "status": "skipped",
+                "message": "TAVILY_API_KEY가 설정되지 않음 (선택적 기능)"
+            }
+
+        return {
+            "status": "healthy",
+            "message": "API 키 구성됨"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+
+def get_memory_usage() -> Dict[str, Any]:
+    """시스템 메모리 사용량 확인"""
+    try:
+        process = psutil.Process()
+        memory_info = process.memory_info()
+
+        # 시스템 전체 메모리
+        system_memory = psutil.virtual_memory()
+
+        return {
+            "process_rss_mb": round(memory_info.rss / 1024 / 1024, 2),
+            "process_vms_mb": round(memory_info.vms / 1024 / 1024, 2),
+            "system_total_gb": round(system_memory.total / 1024 / 1024 / 1024, 2),
+            "system_available_gb": round(system_memory.available / 1024 / 1024 / 1024, 2),
+            "system_percent_used": system_memory.percent
+        }
+    except Exception as e:
+        return {
+            "error": str(e)
+        }
+
+
+# Health check endpoint (simple)
 @app.get("/ok")
+async def simple_health_check():
+    """간단한 헬스체크 (로드밸런서용)"""
+    return {"status": "ok", "service": "carbonai-agent"}
+
+
+# Detailed health check endpoint
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "ok", "service": "carbonai-agent"}
+    """상세 헬스체크 - 모든 컴포넌트 상태 확인"""
+    # 컴포넌트 상태 병렬 체크
+    vectordb_check, redis_check, anthropic_check, tavily_check = await asyncio.gather(
+        check_vectordb(),
+        check_redis(),
+        check_anthropic_api(),
+        check_tavily_api(),
+        return_exceptions=True
+    )
+
+    # 예외 처리
+    def safe_result(result, name: str) -> Dict[str, Any]:
+        if isinstance(result, Exception):
+            return {"status": "unhealthy", "error": f"{name} 체크 실패: {str(result)}"}
+        return result
+
+    components = {
+        "api": {"status": "healthy"},
+        "vectordb": safe_result(vectordb_check, "vectordb"),
+        "cache": safe_result(redis_check, "cache"),
+        "anthropic": safe_result(anthropic_check, "anthropic"),
+        "tavily": safe_result(tavily_check, "tavily"),
+    }
+
+    # 메모리 사용량
+    memory = get_memory_usage()
+
+    # 전체 상태 판단
+    overall_status = "healthy"
+    critical_components = ["api", "anthropic"]  # 필수 컴포넌트
+
+    for name, check in components.items():
+        status = check.get("status", "unknown")
+        if status == "unhealthy":
+            if name in critical_components:
+                overall_status = "unhealthy"
+            else:
+                if overall_status != "unhealthy":
+                    overall_status = "degraded"
+        elif status == "unavailable" and name in critical_components:
+            overall_status = "degraded"
+
+    # 활성 스레드 수
+    active_threads = len(thread_last_activity)
+
+    return {
+        "status": overall_status,
+        "timestamp": datetime.now().isoformat(),
+        "service": "carbonai-agent",
+        "version": "1.0.0",
+        "components": components,
+        "memory": memory,
+        "active_threads": active_threads,
+        "thread_ttl_minutes": THREAD_TTL_SECONDS // 60
+    }
 
 
 # Main chat endpoint (non-streaming)
@@ -457,7 +653,8 @@ async def root():
         "service": "CarbonAI Agent API",
         "version": "1.0.0",
         "endpoints": {
-            "health": "/ok or /health",
+            "health_simple": "GET /ok (로드밸런서용)",
+            "health_detailed": "GET /health (상세 상태)",
             "invoke": "POST /invoke",
             "stream": "POST /stream",
             "categories": "GET /categories"
