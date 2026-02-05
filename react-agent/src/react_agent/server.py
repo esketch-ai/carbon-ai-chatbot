@@ -21,6 +21,7 @@ from react_agent.graph_multi import graph   # 멀티 에이전트 그래프 임�
 from react_agent.configuration import Configuration  # 기존 설정 클래스
 from langchain_core.messages import AIMessage, HumanMessage   # 랭체인 메세지 타입 임포트
 from react_agent.rag_tool import get_rag_tool  # RAG 도구
+from react_agent.input_sanitizer import sanitize_user_input, detect_prompt_injection  # 입력 검증
 
 # Load environment variables
 load_dotenv()
@@ -308,6 +309,13 @@ async def invoke_agent(request: Request, chat_request: ChatRequest):
         ChatResponse with agent's response
     """
     try:
+        # 입력 검증
+        is_dangerous, pattern = detect_prompt_injection(chat_request.message)
+        if is_dangerous:
+            logger.warning(f"[보안] 위험한 입력 감지: {pattern}")
+
+        sanitized_message = sanitize_user_input(chat_request.message)
+
         # Prepare configuration
         config = {
             "configurable": {
@@ -320,7 +328,7 @@ async def invoke_agent(request: Request, chat_request: ChatRequest):
         # Prepare input
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         input_data = {
-            "messages": [HumanMessage(content=chat_request.message)]
+            "messages": [HumanMessage(content=sanitized_message)]
         }
 
         # Invoke the graph
@@ -357,6 +365,13 @@ async def stream_agent(request: Request, chat_request: ChatRequest):
         StreamingResponse with agent's response chunks
     """
     try:
+        # 입력 검증
+        is_dangerous, pattern = detect_prompt_injection(chat_request.message)
+        if is_dangerous:
+            logger.warning(f"[보안] 위험한 입력 감지: {pattern}")
+
+        sanitized_message = sanitize_user_input(chat_request.message)
+
         # Prepare configuration
         config = {
             "configurable": {
@@ -369,7 +384,7 @@ async def stream_agent(request: Request, chat_request: ChatRequest):
         # Prepare input
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         input_data = {
-            "messages": [HumanMessage(content=chat_request.message)]
+            "messages": [HumanMessage(content=sanitized_message)]
         }
 
         async def generate():
@@ -579,6 +594,13 @@ async def create_run(thread_id: str, request: Request):
         else:
             user_message = ""
 
+        # 입력 검증
+        is_dangerous, pattern = detect_prompt_injection(user_message)
+        if is_dangerous:
+            logger.warning(f"[보안] 위험한 입력 감지: {pattern}")
+
+        sanitized_message = sanitize_user_input(user_message)
+
         # Prepare configuration
         # Category can come from either context or config
         category = context.get("category") or config.get("configurable", {}).get("category")
@@ -594,7 +616,7 @@ async def create_run(thread_id: str, request: Request):
         # Prepare input for graph
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         graph_input = {
-            "messages": [HumanMessage(content=user_message)]
+            "messages": [HumanMessage(content=sanitized_message)]
         }
 
         if stream:
@@ -720,6 +742,13 @@ async def create_run_stream(request: Request, thread_id: str):
         else:
             user_message = ""
 
+        # 입력 검증
+        is_dangerous, pattern = detect_prompt_injection(user_message)
+        if is_dangerous:
+            logger.warning(f"[보안] 위험한 입력 감지: {pattern}")
+
+        sanitized_message = sanitize_user_input(user_message)
+
         # Prepare configuration
         # Category can come from either context or config
         category = context.get("category") or config.get("configurable", {}).get("category")
@@ -735,7 +764,7 @@ async def create_run_stream(request: Request, thread_id: str):
         # Prepare input for graph
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         graph_input = {
-            "messages": [HumanMessage(content=user_message)]
+            "messages": [HumanMessage(content=sanitized_message)]
         }
 
         # Streaming response with hybrid mode (messages + values)
