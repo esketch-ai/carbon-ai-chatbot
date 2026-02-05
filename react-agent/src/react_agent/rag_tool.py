@@ -196,7 +196,7 @@ class RAGTool:
             from langchain_anthropic import ChatAnthropic
 
             llm = ChatAnthropic(
-                model="claude-haiku-4-5-20250514",
+                model="claude-haiku-4-5",
                 max_tokens=256,
                 temperature=0.0,
             )
