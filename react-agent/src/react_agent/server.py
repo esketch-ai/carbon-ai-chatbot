@@ -29,6 +29,9 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+# HTTP 요청 로그 노이즈 제거 (heartbeat 등)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 
