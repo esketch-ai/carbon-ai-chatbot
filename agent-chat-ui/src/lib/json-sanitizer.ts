@@ -56,6 +56,51 @@ export function sanitizeJSON(raw: string): string {
 }
 
 /**
+ * 불완전한 JSON을 완성하려는 시도 (스트리밍 중 잘린 경우)
+ */
+function tryCompleteJSON(raw: string): string {
+  let s = raw.trim();
+
+  // 중괄호/대괄호 균형 맞추기
+  const openBraces = (s.match(/\{/g) || []).length;
+  const closeBraces = (s.match(/\}/g) || []).length;
+  const openBrackets = (s.match(/\[/g) || []).length;
+  const closeBrackets = (s.match(/\]/g) || []).length;
+
+  // 닫는 중괄호 추가
+  for (let i = 0; i < openBraces - closeBraces; i++) {
+    s += '}';
+  }
+
+  // 닫는 대괄호 추가
+  for (let i = 0; i < openBrackets - closeBrackets; i++) {
+    s += ']';
+  }
+
+  // 마지막에 쉼표가 있으면 제거
+  s = s.replace(/,\s*$/, '');
+
+  // 불완전한 문자열 값 처리 (닫는 따옴표 없음)
+  const lastQuote = s.lastIndexOf('"');
+  if (lastQuote !== -1) {
+    const beforeQuote = s.substring(0, lastQuote);
+    const afterQuote = s.substring(lastQuote + 1);
+
+    // 따옴표 이후에 : 또는 , 또는 } 또는 ]가 없으면 닫는 따옴표 추가
+    if (afterQuote && !/[:,\}\]]/.test(afterQuote.charAt(0))) {
+      // 열린 따옴표 개수 확인
+      const quotesBeforeCount = (beforeQuote.match(/(?<!\\)"/g) || []).length;
+      if (quotesBeforeCount % 2 === 1) {
+        // 홀수개면 닫는 따옴표 추가
+        s = beforeQuote + '"' + afterQuote.replace(/[^\}\],].*$/, '') + afterQuote.substring(afterQuote.search(/[\}\],]/));
+      }
+    }
+  }
+
+  return s;
+}
+
+/**
  * AI 생성 JSON을 안전하게 파싱. 실패 시 null 반환.
  */
 export function safeParseJSON<T = unknown>(raw: string): { data: T | null; error: string | null } {
@@ -73,10 +118,18 @@ export function safeParseJSON<T = unknown>(raw: string): { data: T | null; error
       const data = JSON.parse(aggressive) as T;
       return { data, error: null };
     } catch {
-      return {
-        data: null,
-        error: err instanceof Error ? err.message : "JSON 파싱 실패",
-      };
+      // 두 번째 시도 실패 시, JSON 완성 시도
+      try {
+        const completed = tryCompleteJSON(raw);
+        const sanitized = sanitizeJSON(completed);
+        const data = JSON.parse(sanitized) as T;
+        return { data, error: null };
+      } catch {
+        return {
+          data: null,
+          error: err instanceof Error ? err.message : "JSON 파싱 실패",
+        };
+      }
     }
   }
 }
