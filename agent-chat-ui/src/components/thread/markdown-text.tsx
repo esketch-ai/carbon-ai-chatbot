@@ -13,10 +13,10 @@ import { AGChart } from "@/components/thread/ag-chart";
 import { AGGridTable } from "@/components/thread/ag-grid-table";
 import dynamic from "next/dynamic";
 
-// MapRenderer를 클라이언트 전용으로 동적 로드
-const MapRenderer = dynamic(
-  () => import("@/components/thread/map-renderer").then((mod) => mod.MapRenderer),
-  { ssr: false, loading: () => <div className="h-[500px] flex items-center justify-center">맵 로딩 중...</div> }
+// KakaoMap을 클라이언트 전용으로 동적 로드
+const KakaoMap = dynamic(
+  () => import("@/components/thread/kakao-map").then((mod) => mod.KakaoMap),
+  { ssr: false, loading: () => <div className="h-[500px] flex items-center justify-center">지도 로딩 중...</div> }
 );
 
 // MermaidDiagram을 클라이언트 전용으로 동적 로드
@@ -274,13 +274,13 @@ const MarkdownTextImpl: FC<{
           );
         }
 
-        // Map with toggle
-        if (language === "map" || language === "geomap" || language === "deckgl") {
+        // Kakao Map with toggle
+        if (language === "map" || language === "geomap" || language === "kakaomap") {
           return (
             <VisualizationToggle
               code={code}
               language={language}
-              renderVisualization={() => <MapRenderer config={code} />}
+              renderVisualization={() => <KakaoMap config={code} />}
               isStreaming={isStreaming}
             />
           );
