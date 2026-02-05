@@ -407,15 +407,70 @@ class RAGTool:
             logger.warning(f"임베딩 차원 확인 실패: {e}")
             return True  # 확인 실패 시 기존 DB 사용
 
+    # 클래스 레벨 락 (클래스 정의 시 초기화 - 스레드 안전)
+    import threading
+    _rebuild_lock = threading.Lock()
+
+    @classmethod
+    def _get_rebuild_lock(cls):
+        """스레드 안전한 락 획득"""
+        return cls._rebuild_lock
+
+    def _check_disk_space(self, required_bytes: int) -> bool:
+        """디스크 공간 확인"""
+        import shutil
+        try:
+            usage = shutil.disk_usage(self.chroma_db_path.parent)
+            # 필요 공간의 2배 + 100MB 여유 확보
+            min_required = required_bytes * 2 + 100 * 1024 * 1024
+            if usage.free < min_required:
+                logger.error(
+                    f"디스크 공간 부족: 필요 {min_required / 1024 / 1024:.1f}MB, "
+                    f"가용 {usage.free / 1024 / 1024:.1f}MB"
+                )
+                return False
+            return True
+        except Exception as e:
+            logger.warning(f"디스크 공간 확인 실패: {e}")
+            return True  # 확인 실패 시 진행 허용
+
+    def _get_directory_size(self, path: Path) -> int:
+        """디렉토리 크기 계산"""
+        total = 0
+        try:
+            for entry in path.rglob("*"):
+                if entry.is_file():
+                    total += entry.stat().st_size
+        except Exception:
+            pass
+        return total
+
     def _rebuild_vectorstore(self):
-        """기존 벡터 DB를 백업 후 재구축"""
+        """기존 벡터 DB를 백업 후 재구축 (스레드 안전)"""
         import shutil
         from datetime import datetime
+        import uuid
 
-        if self.chroma_db_path.exists():
-            # 백업 생성
+        lock = self._get_rebuild_lock()
+
+        with lock:
+            if not self.chroma_db_path.exists():
+                return
+
+            # 디스크 공간 확인
+            db_size = self._get_directory_size(self.chroma_db_path)
+            if not self._check_disk_space(db_size):
+                raise RuntimeError("벡터 DB 백업을 위한 디스크 공간이 부족합니다")
+
+            # 고유 백업 경로 생성 (UUID로 충돌 방지)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_path = Path(f"{self.chroma_db_path}.backup.{timestamp}")
+            unique_id = uuid.uuid4().hex[:8]
+            backup_path = Path(f"{self.chroma_db_path}.backup.{timestamp}_{unique_id}")
+
+            # 백업 경로가 이미 존재하는 경우 처리
+            if backup_path.exists():
+                logger.warning(f"백업 경로 이미 존재: {backup_path}, 재생성")
+                shutil.rmtree(backup_path, ignore_errors=True)
 
             try:
                 logger.info(f"벡터 DB 백업 생성 중: {backup_path}")
@@ -423,7 +478,14 @@ class RAGTool:
                 logger.info(f"✓ 백업 완료: {backup_path}")
             except Exception as e:
                 logger.error(f"백업 생성 실패: {e}")
+                # 불완전한 백업 정리
+                if backup_path.exists():
+                    shutil.rmtree(backup_path, ignore_errors=True)
                 raise RuntimeError(f"벡터 DB 백업 실패: {e}")
+
+            # vectorstore 참조 무효화 (삭제 전)
+            old_vectorstore = self._vectorstore
+            self._vectorstore = None
 
             # 기존 DB 삭제
             try:
@@ -433,31 +495,56 @@ class RAGTool:
             except Exception as e:
                 logger.error(f"벡터 DB 삭제 실패: {e}")
                 logger.info("백업에서 복구 시도 중...")
-                shutil.copytree(backup_path, self.chroma_db_path)
+                try:
+                    # 부분 삭제된 DB 정리
+                    if self.chroma_db_path.exists():
+                        shutil.rmtree(self.chroma_db_path, ignore_errors=True)
+                    # 백업에서 복구
+                    shutil.copytree(backup_path, self.chroma_db_path)
+                    # vectorstore 참조 복원
+                    self._vectorstore = old_vectorstore
+                    logger.info("✓ 백업에서 복구 완료")
+                except Exception as recover_error:
+                    logger.critical(f"복구 실패: {recover_error}")
+                    raise RuntimeError(
+                        f"벡터 DB 삭제 실패 및 복구 실패: 원본 오류={e}, 복구 오류={recover_error}"
+                    )
                 raise RuntimeError(f"벡터 DB 삭제 실패, 복구됨: {e}")
 
             # 오래된 백업 정리
             self._cleanup_old_backups(keep_count=3)
 
     def _cleanup_old_backups(self, keep_count: int = 3):
-        """오래된 백업 파일 정리"""
+        """오래된 백업 파일 정리 (스레드 안전)"""
         import shutil
 
         parent_dir = self.chroma_db_path.parent
-        backup_pattern = f"{self.chroma_db_path.name}.backup.*"
+        db_name = self.chroma_db_path.name
+        # 백업 패턴: {db_name}.backup.{timestamp} 또는 {db_name}.backup.{timestamp}_{uuid}
+        backup_pattern = f"{db_name}.backup.*"
 
-        backups = sorted(
-            parent_dir.glob(backup_pattern),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )
+        try:
+            backups = []
+            for path in parent_dir.glob(backup_pattern):
+                if path.is_dir():
+                    try:
+                        backups.append((path, path.stat().st_mtime))
+                    except OSError:
+                        # 동시 삭제된 경우 무시
+                        pass
 
-        for old_backup in backups[keep_count:]:
-            try:
-                shutil.rmtree(old_backup)
-                logger.info(f"오래된 백업 삭제: {old_backup}")
-            except Exception as e:
-                logger.warning(f"백업 삭제 실패: {old_backup} - {e}")
+            # 수정 시간 기준 정렬 (최신 우선)
+            backups.sort(key=lambda x: x[1], reverse=True)
+
+            for old_backup, _ in backups[keep_count:]:
+                try:
+                    if old_backup.exists():
+                        shutil.rmtree(old_backup)
+                        logger.info(f"오래된 백업 삭제: {old_backup}")
+                except Exception as e:
+                    logger.warning(f"백업 삭제 실패: {old_backup} - {e}")
+        except Exception as e:
+            logger.warning(f"백업 정리 중 오류 (무시됨): {e}")
 
     def _build_vectorstore_if_needed(self) -> bool:
         """벡터 DB가 없으면 자동으로 구축, 차원 불일치 시 재구축"""
