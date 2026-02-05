@@ -582,17 +582,17 @@ class RAGTool:
                 logger.warning("로드할 문서가 없습니다.")
                 return False
 
-            # Chroma DB 생성 (cosine distance 사용)
+            # Chroma DB 생성 (cosine distance 사용, HNSW 최적화 설정)
             logger.info(f"벡터 DB 구축 중... ({len(documents)}개 문서 청크)")
             self._vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=self.embeddings,
                 persist_directory=str(self.chroma_db_path),
                 collection_metadata={
-                    "hnsw:space": "cosine",
-                    "hnsw:construction_ef": 200,
-                    "hnsw:search_ef": 100,
-                    "hnsw:M": 32,
+                    "hnsw:space": "cosine",  # 코사인 거리 사용
+                    "hnsw:construction_ef": 200,  # 인덱스 구축 시 후보 수 (높을수록 정확, 느림)
+                    "hnsw:search_ef": 100,  # 검색 시 탐색할 후보 수 (기본 10 → 100으로 향상)
+                    "hnsw:M": 32,  # 그래프 연결 수 (높을수록 정확, 메모리 사용 증가)
                 }
             )
 
@@ -615,20 +615,32 @@ class RAGTool:
                     if self._vectorstore is None:
                         self._vectorstore = Chroma(
                             persist_directory=str(self.chroma_db_path),
-                            embedding_function=self.embeddings
+                            embedding_function=self.embeddings,
+                            collection_metadata={
+                                "hnsw:space": "cosine",
+                                "hnsw:construction_ef": 200,  # 인덱스 구축 시 후보 수
+                                "hnsw:search_ef": 100,  # 검색 시 탐색할 후보 수 (기본 10 → 100으로 향상)
+                                "hnsw:M": 32,  # 그래프 연결 수
+                            }
                         )
 
-                    # 진단: ChromaDB distance 함수 확인
+                    # 진단: ChromaDB HNSW 설정 확인
                     try:
                         collection = self._vectorstore._collection
                         if collection and hasattr(collection, 'metadata') and collection.metadata:
                             metadata = collection.metadata
                             distance_function = metadata.get('hnsw:space', 'unknown')
-                            logger.info(f"ChromaDB distance 함수: {distance_function}")
+                            search_ef = metadata.get('hnsw:search_ef', 'default')
+                            construction_ef = metadata.get('hnsw:construction_ef', 'default')
+                            m_value = metadata.get('hnsw:M', 'default')
+                            logger.info(
+                                f"ChromaDB HNSW 설정: space={distance_function}, "
+                                f"search_ef={search_ef}, construction_ef={construction_ef}, M={m_value}"
+                            )
                         else:
-                            logger.info("ChromaDB distance 함수: 확인 불가 (metadata 없음)")
+                            logger.info("ChromaDB HNSW 설정: 확인 불가 (metadata 없음)")
                     except Exception as e:
-                        logger.warning(f"Distance 함수 확인 실패: {e}")
+                        logger.warning(f"HNSW 설정 확인 실패: {e}")
 
                     logger.info("벡터 DB 로드 완료")
                 else:
