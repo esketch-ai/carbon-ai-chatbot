@@ -3,9 +3,58 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { safeParseJSON } from "@/lib/json-sanitizer";
-import Script from "next/script";
 
 const KAKAO_API_KEY = "ac3864d73fb04009cd4bfc502c9c19a4";
+
+// 카카오 지도 스크립트 로드 함수
+const loadKakaoMapScript = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    // 이미 로드되었는지 확인
+    if (window.kakao && window.kakao.maps) {
+      resolve();
+      return;
+    }
+
+    // 기존 스크립트가 있는지 확인
+    const existingScript = document.querySelector(
+      'script[src*="dapi.kakao.com"]'
+    );
+
+    if (existingScript) {
+      existingScript.addEventListener("load", () => {
+        if (window.kakao && window.kakao.maps) {
+          window.kakao.maps.load(() => resolve());
+        } else {
+          reject(new Error("카카오 지도 객체를 찾을 수 없습니다."));
+        }
+      });
+      return;
+    }
+
+    // 새 스크립트 생성
+    const script = document.createElement("script");
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&autoload=false`;
+    script.async = true;
+    script.type = "text/javascript";
+
+    script.onload = () => {
+      if (window.kakao && window.kakao.maps) {
+        window.kakao.maps.load(() => {
+          console.log("카카오 지도 로드 완료");
+          resolve();
+        });
+      } else {
+        reject(new Error("카카오 지도 객체를 찾을 수 없습니다."));
+      }
+    };
+
+    script.onerror = () => {
+      reject(new Error("카카오 지도 스크립트 로드 실패"));
+    };
+
+    document.head.appendChild(script);
+  });
+};
 
 interface KakaoMapMarker {
   position: {
@@ -69,6 +118,30 @@ export function KakaoMap({ config, className }: KakaoMapProps) {
     });
 
     return () => observer.disconnect();
+  }, []);
+
+  // 카카오 지도 스크립트 로드
+  useEffect(() => {
+    let isMounted = true;
+
+    loadKakaoMapScript()
+      .then(() => {
+        if (isMounted) {
+          console.log("카카오 지도 스크립트 로드 성공");
+          setIsScriptLoaded(true);
+        }
+      })
+      .catch((err) => {
+        console.error("카카오 지도 로드 에러:", err);
+        if (isMounted) {
+          setError(err.message || "카카오 지도를 로드할 수 없습니다.");
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Config 파싱
@@ -365,6 +438,47 @@ export function KakaoMap({ config, className }: KakaoMapProps) {
     );
   }
 
+  if (!isScriptLoaded) {
+    return (
+      <div
+        className={cn(
+          "rounded-2xl bg-gradient-to-br from-muted/30 to-muted/50",
+          "dark:from-zinc-900/50 dark:to-zinc-800/50",
+          "backdrop-blur-sm p-6 border border-border/40 dark:border-zinc-700/50",
+          "min-h-[500px]",
+          className
+        )}
+      >
+        <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
+          <svg
+            className="animate-spin h-8 w-8 text-primary"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-foreground">카카오 지도 로드 중...</p>
+            <p className="text-xs text-muted-foreground mt-1">지도 스크립트를 불러오고 있습니다</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading || !mapConfig) {
     return (
       <div
@@ -372,10 +486,11 @@ export function KakaoMap({ config, className }: KakaoMapProps) {
           "rounded-2xl bg-gradient-to-br from-muted/30 to-muted/50",
           "dark:from-zinc-900/50 dark:to-zinc-800/50",
           "backdrop-blur-sm p-6 border border-border/40 dark:border-zinc-700/50",
+          "min-h-[500px]",
           className
         )}
       >
-        <div className="text-center text-sm text-muted-foreground py-4 flex items-center justify-center gap-2">
+        <div className="h-full flex items-center justify-center gap-2">
           <svg
             className="animate-spin h-4 w-4"
             xmlns="http://www.w3.org/2000/svg"
@@ -396,7 +511,7 @@ export function KakaoMap({ config, className }: KakaoMapProps) {
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             />
           </svg>
-          <span>지도 렌더링 중...</span>
+          <span className="text-sm text-muted-foreground">지도 설정 중...</span>
         </div>
       </div>
     );
@@ -404,19 +519,6 @@ export function KakaoMap({ config, className }: KakaoMapProps) {
 
   return (
     <>
-      <Script
-        src={`//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_API_KEY}&autoload=false`}
-        strategy="afterInteractive"
-        onLoad={() => {
-          window.kakao.maps.load(() => {
-            setIsScriptLoaded(true);
-          });
-        }}
-        onError={() => {
-          setError("카카오 지도 스크립트를 로드할 수 없습니다.");
-        }}
-      />
-
       <style jsx global>{`
         @keyframes markerBounce {
           0% {
