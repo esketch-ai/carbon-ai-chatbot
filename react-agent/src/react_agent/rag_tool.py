@@ -225,7 +225,9 @@ class RAGTool:
                 response = llm.invoke(prompt)
                 context = response.content.strip() if response.content else ""
                 contexts.append(context)
-                logger.debug(f"[문맥 생성] {filename} 청크 {i+1}/{len(chunks)}: {context[:50]}...")
+                # 생성된 문맥 전체를 로그로 출력 (최대 200자)
+                context_preview = context[:200] + "..." if len(context) > 200 else context
+                logger.info(f"[문맥 생성] {filename} 청크 {i+1}/{len(chunks)}:\n{context_preview}")
             except Exception as e:
                 logger.warning(f"[문맥 생성] {filename} 청크 {i+1} 실패: {e}")
                 contexts.append("")
