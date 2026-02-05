@@ -11,13 +11,14 @@ from datetime import datetime
 from typing import Any, Dict, Optional, List
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 import uvicorn
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
 from react_agent.graph_multi import graph   # 멀티 에이전트 그래프 임포트
 from react_agent.configuration import Configuration  # 기존 설정 클래스
@@ -40,6 +41,44 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
+
+# ============= Prometheus Metrics =============
+# Request metrics
+REQUEST_COUNT = Counter(
+    'carbonai_requests_total',
+    'Total number of requests',
+    ['endpoint', 'method', 'status']
+)
+REQUEST_LATENCY = Histogram(
+    'carbonai_request_latency_seconds',
+    'Request latency in seconds',
+    ['endpoint'],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0]
+)
+
+# Agent metrics
+AGENT_USAGE = Counter(
+    'carbonai_agent_usage_total',
+    'Agent usage count by type',
+    ['agent_type', 'category']
+)
+
+# Error metrics
+ERROR_COUNT = Counter(
+    'carbonai_errors_total',
+    'Total number of errors',
+    ['error_type', 'endpoint']
+)
+
+# System metrics
+ACTIVE_THREADS = Gauge(
+    'carbonai_active_threads',
+    'Number of active conversation threads'
+)
+ACTIVE_REQUESTS = Gauge(
+    'carbonai_active_requests',
+    'Number of currently active requests'
+)
 
 
 # Helper function to convert LangChain messages to JSON-serializable format
@@ -430,6 +469,15 @@ async def simple_health_check():
     return {"status": "ok", "service": "carbonai-agent"}
 
 
+# Prometheus metrics endpoint
+@app.get("/metrics")
+async def metrics():
+    """Prometheus 메트릭 엔드포인트"""
+    # Update active threads gauge
+    ACTIVE_THREADS.set(len(thread_last_activity))
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 # Detailed health check endpoint
 @app.get("/health")
 async def health_check():
@@ -504,6 +552,9 @@ async def invoke_agent(request: Request, chat_request: ChatRequest):
     Returns:
         ChatResponse with agent's response
     """
+    start_time = time.perf_counter()
+    ACTIVE_REQUESTS.inc()
+    status = "success"
     try:
         # 입력 검증
         is_dangerous, pattern = detect_prompt_injection(chat_request.message)
@@ -520,6 +571,10 @@ async def invoke_agent(request: Request, chat_request: ChatRequest):
                 "thread_id": chat_request.thread_id or "default"
             }
         }
+
+        # Track agent usage
+        category = chat_request.category or "general"
+        AGENT_USAGE.labels(agent_type="invoke", category=category).inc()
 
         # Prepare input
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
@@ -543,7 +598,13 @@ async def invoke_agent(request: Request, chat_request: ChatRequest):
         )
 
     except Exception as e:
+        status = "error"
+        ERROR_COUNT.labels(error_type=type(e).__name__, endpoint="/invoke").inc()
         raise HTTPException(status_code=500, detail=f"Error invoking agent: {str(e)}")
+    finally:
+        ACTIVE_REQUESTS.dec()
+        REQUEST_COUNT.labels(endpoint="/invoke", method="POST", status=status).inc()
+        REQUEST_LATENCY.labels(endpoint="/invoke").observe(time.perf_counter() - start_time)
 
 
 # Streaming chat endpoint
@@ -560,6 +621,13 @@ async def stream_agent(request: Request, chat_request: ChatRequest):
     Returns:
         StreamingResponse with agent's response chunks
     """
+    start_time = time.perf_counter()
+    REQUEST_COUNT.labels(endpoint="/stream", method="POST", status="started").inc()
+
+    # Track agent usage
+    category = chat_request.category or "general"
+    AGENT_USAGE.labels(agent_type="stream", category=category).inc()
+
     try:
         # 입력 검증
         is_dangerous, pattern = detect_prompt_injection(chat_request.message)
@@ -585,6 +653,8 @@ async def stream_agent(request: Request, chat_request: ChatRequest):
 
         async def generate():
             """Generate streaming response with hybrid mode."""
+            ACTIVE_REQUESTS.inc()
+            stream_start = time.perf_counter()
             try:
                 # Use hybrid streaming for real-time tokens
                 async for event in graph.astream(
@@ -607,9 +677,15 @@ async def stream_agent(request: Request, chat_request: ChatRequest):
                         # Skip values events in simple endpoint
 
                 yield "data: [DONE]\n\n"
+                REQUEST_COUNT.labels(endpoint="/stream", method="POST", status="success").inc()
 
             except Exception as e:
+                ERROR_COUNT.labels(error_type=type(e).__name__, endpoint="/stream").inc()
+                REQUEST_COUNT.labels(endpoint="/stream", method="POST", status="error").inc()
                 yield f"data: Error: {str(e)}\n\n"
+            finally:
+                ACTIVE_REQUESTS.dec()
+                REQUEST_LATENCY.labels(endpoint="/stream").observe(time.perf_counter() - stream_start)
 
         return StreamingResponse(
             generate(),
@@ -617,6 +693,8 @@ async def stream_agent(request: Request, chat_request: ChatRequest):
         )
 
     except Exception as e:
+        ERROR_COUNT.labels(error_type=type(e).__name__, endpoint="/stream").inc()
+        REQUEST_COUNT.labels(endpoint="/stream", method="POST", status="error").inc()
         raise HTTPException(status_code=500, detail=f"Error streaming agent: {str(e)}")
 
 
@@ -655,6 +733,7 @@ async def root():
         "endpoints": {
             "health_simple": "GET /ok (로드밸런서용)",
             "health_detailed": "GET /health (상세 상태)",
+            "metrics": "GET /metrics (Prometheus 메트릭)",
             "invoke": "POST /invoke",
             "stream": "POST /stream",
             "categories": "GET /categories"
@@ -910,6 +989,8 @@ async def create_run(thread_id: str, request: Request):
 @limiter.limit("10/minute")
 async def create_run_stream(request: Request, thread_id: str):
     """Create a streaming run in a thread (LangGraph Cloud API compatible)."""
+    REQUEST_COUNT.labels(endpoint="/threads/runs/stream", method="POST", status="started").inc()
+
     try:
         track_thread_activity(thread_id)
         body = await request.json()
@@ -950,6 +1031,9 @@ async def create_run_stream(request: Request, thread_id: str):
         # Category can come from either context or config
         category = context.get("category") or config.get("configurable", {}).get("category")
 
+        # Track agent usage with category
+        AGENT_USAGE.labels(agent_type="langgraph_stream", category=category or "general").inc()
+
         graph_config = {
             "configurable": {
                 "model": config.get("configurable", {}).get("model", "claude-haiku-4-5"),
@@ -970,7 +1054,9 @@ async def create_run_stream(request: Request, thread_id: str):
         async def generate():
             """Generate streaming response with real-time tokens."""
             import asyncio
+            ACTIVE_REQUESTS.inc()
             t_total = time.perf_counter()
+            stream_status = "success"
             try:
                 run_id = str(uuid.uuid4())
                 chunk_count = 0
@@ -1030,13 +1116,20 @@ async def create_run_stream(request: Request, thread_id: str):
 
             except asyncio.CancelledError:
                 # Client disconnected - don't yield error event
+                stream_status = "cancelled"
                 raise
             except Exception as e:
+                stream_status = "error"
+                ERROR_COUNT.labels(error_type=type(e).__name__, endpoint="/threads/runs/stream").inc()
                 logger.error(f"❌ 스트리밍 오류: {e}")
                 import traceback
                 traceback.print_exc()
                 error_json = json.dumps({"error": str(e), "message": str(e)})
                 yield f"event: error\ndata: {error_json}\n\n"
+            finally:
+                ACTIVE_REQUESTS.dec()
+                REQUEST_COUNT.labels(endpoint="/threads/runs/stream", method="POST", status=stream_status).inc()
+                REQUEST_LATENCY.labels(endpoint="/threads/runs/stream").observe(time.perf_counter() - t_total)
 
         return StreamingResponse(
             generate(),
@@ -1049,6 +1142,8 @@ async def create_run_stream(request: Request, thread_id: str):
         )
 
     except Exception as e:
+        ERROR_COUNT.labels(error_type=type(e).__name__, endpoint="/threads/runs/stream").inc()
+        REQUEST_COUNT.labels(endpoint="/threads/runs/stream", method="POST", status="error").inc()
         print(f"[STREAM OUTER ERROR] {e}")
         import traceback
         traceback.print_exc()
