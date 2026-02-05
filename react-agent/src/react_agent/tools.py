@@ -45,7 +45,12 @@ async def search(query: str) -> Optional[dict[str, Any]]:
 
 
 @tool
-def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> dict[str, Any]:
+def search_knowledge_base(
+    query: str,
+    k: int = 5,
+    use_hybrid: bool = True,
+    thread_id: Optional[str] = None
+) -> dict[str, Any]:
     """회사 지식베이스에서 관련 문서를 검색합니다.
 
     이 도구는 탄소 배출권 관련 문서를 찾습니다.
@@ -74,6 +79,8 @@ def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> di
         use_hybrid: 하이브리드 검색 사용 여부 (기본값: True)
             - True: RAG_SEARCH_MODE에 따라 graph 또는 bm25 검색
             - False: 벡터 검색만 사용
+        thread_id: 스레드 ID (캐시 격리에 사용, 사용자 간 응답 혼선 방지)
+            - 내부적으로 캐시 키에 포함되어 다른 사용자의 캐시와 격리됩니다.
 
     Returns:
         검색된 문서들의 정보를 포함한 딕셔너리
@@ -94,7 +101,8 @@ def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> di
             query,
             k=k,
             similarity_threshold=0.7,
-            graph_boost=0.3
+            graph_boost=0.3,
+            thread_id=thread_id
         )
         threshold_msg = "그래프 점수 0.7"
         search_type = "그래프"
@@ -104,13 +112,19 @@ def search_knowledge_base(query: str, k: int = 5, use_hybrid: bool = True) -> di
             query,
             k=k,
             alpha=-1,  # RRF 방식 활성화
-            similarity_threshold=0.7
+            similarity_threshold=0.7,
+            thread_id=thread_id
         )
         threshold_msg = "하이브리드 점수 0.7"
         search_type = "BM25+벡터"
     else:
         # 벡터 검색 전용
-        results = rag_tool.search_documents(query, k=k, similarity_threshold=0.7)
+        results = rag_tool.search_documents(
+            query,
+            k=k,
+            similarity_threshold=0.7,
+            thread_id=thread_id
+        )
         threshold_msg = "유사도 0.7"
         search_type = "벡터"
 

@@ -42,12 +42,15 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
     병렬로 실행하여 결과를 state에 저장합니다.
     이를 통해 LLM이 여러 번 도구를 호출하는 것을 방지하고 속도를 개선합니다.
     """
+    # config에서 thread_id 추출 (캐시 격리에 사용)
+    thread_id = config.get("configurable", {}).get("thread_id") if config else None
+
     # 마지막 사용자 메시지 추출
     last_human_message = None
     for msg in reversed(state.messages):
         if isinstance(msg, HumanMessage):
             last_human_message = msg.content
-            break   
+            break
 
     if not last_human_message:
         return {}
@@ -62,11 +65,11 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
             "prefetched_context": {"source": "faq_cache"}
         }
 
-    # RAG 검색 실행
+    # RAG 검색 실행 (thread_id 전달로 캐시 격리)
     tasks = []
     task_names = []
 
-    tasks.append(asyncio.create_task(_safe_rag_search(last_human_message)))
+    tasks.append(asyncio.create_task(_safe_rag_search(last_human_message, thread_id=thread_id)))
     task_names.append("RAG")
 
     # 병렬 실행
@@ -88,14 +91,23 @@ async def smart_tool_prefetch(state: State, config: RunnableConfig) -> Dict[str,
         return {}
 
 
-async def _safe_rag_search(query: str) -> Dict[str, Any]:
+async def _safe_rag_search(query: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
     """RAG 검색을 안전하게 실행 (예외 처리 포함)
 
     RAG에서 문서를 찾지 못하면 웹 검색을 수행합니다.
     단, NET-Z 관련 질문은 MCP 도구를 사용해야 하므로 웹 검색을 스킵합니다.
+
+    Args:
+        query: 검색 쿼리
+        thread_id: 스레드 ID (캐시 격리에 사용, 사용자 간 응답 혼선 방지)
     """
     try:
-        result = search_knowledge_base.invoke({"query": query, "k": 3, "use_hybrid": True})
+        result = search_knowledge_base.invoke({
+            "query": query,
+            "k": 3,
+            "use_hybrid": True,
+            "thread_id": thread_id
+        })
 
         # RAG에서 문서를 찾지 못한 경우
         if result.get("status") == "no_results":
@@ -318,6 +330,9 @@ async def call_model(
         system_message += context_info
 
     # LLM 응답 캐싱 (오프너 질문 등 반복적인 질문에 대해)
+    # config에서 thread_id 추출 (캐시 격리에 사용)
+    thread_id = config.get("configurable", {}).get("thread_id") if config else None
+
     cache_manager = get_cache_manager()
     cache_key_content = _serialize_messages_for_cache(
         state.messages,
@@ -326,9 +341,10 @@ async def call_model(
     )
 
     # 캐시 확인 (툴 호출이 있는 경우는 제외)
+    # thread_id로 캐시 격리하여 사용자 간 응답 혼선 방지
     cached_response = None
     if cache_key_content and not state.is_last_step:
-        cached_response = cache_manager.get("llm", cache_key_content)
+        cached_response = cache_manager.get("llm", cache_key_content, thread_id=thread_id)
         if cached_response:
             # 캐시된 응답을 AIMessage로 복원
             return {
@@ -411,13 +427,14 @@ async def call_model(
             )
 
     # LLM 응답 캐싱 (툴 호출이 없는 최종 응답만)
+    # thread_id로 캐시 격리하여 사용자 간 응답 혼선 방지
     if cache_key_content and not response.tool_calls:
         cache_data = {
             "content": response.content,
             "additional_kwargs": response.additional_kwargs,
             "id": response.id
         }
-        cache_manager.set("llm", cache_key_content, cache_data)
+        cache_manager.set("llm", cache_key_content, cache_data, thread_id=thread_id)
 
     # Return the model's response as a list to be added to existing messages
     # 🔥 대화 맥락도 함께 업데이트

@@ -90,32 +90,53 @@ class CacheManager:
         else:
             logger.info("메모리 캐시를 사용합니다.")
 
-    def _generate_cache_key(self, prefix: str, content: str) -> str:
+    def _generate_cache_key(
+        self,
+        prefix: str,
+        content: str,
+        thread_id: Optional[str] = None
+    ) -> str:
         """
-        캐시 키 생성 (해시 기반)
+        캐시 키 생성 (해시 기반, 선택적 스레드 격리)
 
         Args:
             prefix: 키 접두사 (예: "rag", "llm")
             content: 해시할 콘텐츠
+            thread_id: 스레드 ID (제공 시 스레드별 격리된 캐시 키 생성)
 
         Returns:
-            캐시 키
+            캐시 키 (thread_id 있으면 "prefix:thread_id:hash", 없으면 "prefix:global:hash")
+
+        Note:
+            thread_id를 포함하면 사용자/대화 간 캐시 충돌을 방지하여
+            다른 사용자의 응답이 섞이는 것을 방지합니다.
         """
         content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
-        return f"{prefix}:{content_hash}"
+        if thread_id:
+            # 스레드별 격리된 캐시 키
+            return f"{prefix}:{thread_id}:{content_hash}"
+        else:
+            # 전역 캐시 키 (FAQ 등 공유 가능한 데이터)
+            return f"{prefix}:global:{content_hash}"
 
-    def get(self, prefix: str, content: str) -> Optional[Any]:
+    def get(
+        self,
+        prefix: str,
+        content: str,
+        thread_id: Optional[str] = None
+    ) -> Optional[Any]:
         """
         캐시에서 값 가져오기
 
         Args:
             prefix: 키 접두사
             content: 해시할 콘텐츠
+            thread_id: 스레드 ID (제공 시 스레드별 격리된 캐시 조회)
 
         Returns:
             캐시된 값 또는 None
         """
-        cache_key = self._generate_cache_key(prefix, content)
+        cache_key = self._generate_cache_key(prefix, content, thread_id)
 
         # Redis 캐시 확인
         if self._redis_client:
@@ -146,7 +167,8 @@ class CacheManager:
         prefix: str,
         content: str,
         value: Any,
-        ttl: Optional[int] = None
+        ttl: Optional[int] = None,
+        thread_id: Optional[str] = None
     ) -> bool:
         """
         캐시에 값 저장
@@ -156,11 +178,12 @@ class CacheManager:
             content: 해시할 콘텐츠
             value: 저장할 값
             ttl: TTL (초 단위, None이면 default_ttl 사용)
+            thread_id: 스레드 ID (제공 시 스레드별 격리된 캐시 저장)
 
         Returns:
             성공 여부
         """
-        cache_key = self._generate_cache_key(prefix, content)
+        cache_key = self._generate_cache_key(prefix, content, thread_id)
         ttl = ttl or self.default_ttl
 
         # Redis 캐시 저장

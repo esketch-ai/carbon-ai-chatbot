@@ -727,7 +727,14 @@ class RAGTool:
                 self._graph_manager = None
         return self._graph_manager
 
-    def search_documents(self, query: str, k: int = 4, similarity_threshold: float = 0.55, include_context: bool = False) -> List[Dict[str, Any]]:
+    def search_documents(
+        self,
+        query: str,
+        k: int = 4,
+        similarity_threshold: float = 0.55,
+        include_context: bool = False,
+        thread_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """
         문서 검색 (코사인 유사도 기반)
 
@@ -736,6 +743,7 @@ class RAGTool:
             k: 반환할 문서 수
             similarity_threshold: 코사인 유사도 임계값
             include_context: 문맥을 포함할지 여부 (기본: False, 청크만 반환)
+            thread_id: 스레드 ID (캐시 격리에 사용, 사용자 간 응답 혼선 방지)
 
         Returns:
             관련 문서 리스트
@@ -747,7 +755,8 @@ class RAGTool:
 
         cache_manager = get_cache_manager()
         cache_content = f"{query}|k={k}|threshold={similarity_threshold}"
-        cached_result = cache_manager.get("rag", cache_content)
+        # 스레드별 캐시 격리로 사용자 간 응답 혼선 방지
+        cached_result = cache_manager.get("rag", cache_content, thread_id=thread_id)
         if cached_result is not None:
             return cached_result
 
@@ -816,7 +825,7 @@ class RAGTool:
                     f"임계값 {similarity_threshold} 미만: "
                     f"{len(docs_with_scores)}개 결과 모두 제외됨"
                 )
-                cache_manager.set("rag", cache_content, [], ttl=3600)
+                cache_manager.set("rag", cache_content, [], ttl=3600, thread_id=thread_id)
                 return []
 
             logger.info(f"필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
@@ -824,7 +833,7 @@ class RAGTool:
             for idx, doc in enumerate(filtered_docs[:5]):
                 logger.info(f"  #{idx+1}: {doc['filename']} (유사도: {doc['similarity']:.3f})")
 
-            cache_manager.set("rag", cache_content, filtered_docs)
+            cache_manager.set("rag", cache_content, filtered_docs, thread_id=thread_id)
             return filtered_docs
 
         except Exception as e:
@@ -836,7 +845,8 @@ class RAGTool:
         query: str,
         k: int = 3,
         alpha: float = 0.5,
-        similarity_threshold: float = 0.7
+        similarity_threshold: float = 0.7,
+        thread_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         하이브리드 검색 (BM25 + 벡터 검색, RRF 사용)
@@ -846,6 +856,7 @@ class RAGTool:
             k: 반환할 문서 수
             alpha: 벡터 검색 가중치 (음수면 RRF 사용)
             similarity_threshold: 최소 유사도 임계값
+            thread_id: 스레드 ID (캐시 격리에 사용, 사용자 간 응답 혼선 방지)
 
         Returns:
             관련 문서 리스트
@@ -857,7 +868,8 @@ class RAGTool:
 
         cache_manager = get_cache_manager()
         cache_content = f"hybrid|{query}|k={k}|alpha={alpha}|threshold={similarity_threshold}"
-        cached_result = cache_manager.get("rag", cache_content)
+        # 스레드별 캐시 격리로 사용자 간 응답 혼선 방지
+        cached_result = cache_manager.get("rag", cache_content, thread_id=thread_id)
         if cached_result is not None:
             return cached_result
 
@@ -1046,7 +1058,7 @@ class RAGTool:
                     f"임계값 {similarity_threshold} 미만: "
                     f"{len(sorted_results)}개 결과 모두 제외됨"
                 )
-                cache_manager.set("rag", cache_content, [], ttl=3600)
+                cache_manager.set("rag", cache_content, [], ttl=3600, thread_id=thread_id)
                 return []
 
             logger.info(f"필터링 완료: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
@@ -1058,7 +1070,7 @@ class RAGTool:
                     f"(hybrid: {doc['similarity']:.3f} = vector: {doc['vector_score']:.3f} + bm25: {doc['bm25_score']:.3f})"
                 )
 
-            cache_manager.set("rag", cache_content, filtered_docs)
+            cache_manager.set("rag", cache_content, filtered_docs, thread_id=thread_id)
             return filtered_docs
 
         except Exception as e:
@@ -1070,7 +1082,8 @@ class RAGTool:
         query: str,
         k: int = 3,
         similarity_threshold: float = 0.7,
-        graph_boost: float = 0.3
+        graph_boost: float = 0.3,
+        thread_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         그래프 기반 하이브리드 검색 (벡터 + Neo4j 주제 확장)
@@ -1086,6 +1099,7 @@ class RAGTool:
             k: 반환할 문서 수
             similarity_threshold: 최소 유사도 임계값
             graph_boost: 그래프 연결 청크의 추가 점수 (부모 점수 × boost)
+            thread_id: 스레드 ID (캐시 격리에 사용, 사용자 간 응답 혼선 방지)
 
         Returns:
             관련 문서 리스트
@@ -1095,10 +1109,11 @@ class RAGTool:
 
         self._check_kb_changed()
 
-        # 캐시 확인
+        # 캐시 확인 (스레드별 격리)
         cache_manager = get_cache_manager()
         cache_content = f"graph|{query}|k={k}|threshold={similarity_threshold}|boost={graph_boost}"
-        cached_result = cache_manager.get("rag", cache_content)
+        # 스레드별 캐시 격리로 사용자 간 응답 혼선 방지
+        cached_result = cache_manager.get("rag", cache_content, thread_id=thread_id)
         if cached_result is not None:
             return cached_result
 
@@ -1117,7 +1132,7 @@ class RAGTool:
 
             if not vector_docs:
                 logger.warning("[그래프 검색] 벡터 검색 결과 없음")
-                cache_manager.set("rag", cache_content, [], ttl=3600)
+                cache_manager.set("rag", cache_content, [], ttl=3600, thread_id=thread_id)
                 return []
 
             logger.info(f"[그래프 검색] 벡터 후보: {len(vector_docs)}개")
@@ -1333,7 +1348,7 @@ class RAGTool:
                     f"[그래프 검색] 임계값 {similarity_threshold} 미만: "
                     f"{len(sorted_results)}개 결과 모두 제외됨"
                 )
-                cache_manager.set("rag", cache_content, [], ttl=3600)
+                cache_manager.set("rag", cache_content, [], ttl=3600, thread_id=thread_id)
                 return []
 
             logger.info(f"[그래프 검색] 결과: {len(filtered_docs)}개 선택, {rejected_count}개 제외")
@@ -1348,7 +1363,7 @@ class RAGTool:
             total_elapsed = time.perf_counter() - t_total_start
             perf_logger.info(f"⏱️ [그래프 검색] 총 {total_elapsed:.2f}초 (결과: {len(filtered_docs)}건)")
 
-            cache_manager.set("rag", cache_content, filtered_docs)
+            cache_manager.set("rag", cache_content, filtered_docs, thread_id=thread_id)
             return filtered_docs
 
         except Exception as e:
