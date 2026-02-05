@@ -168,3 +168,353 @@
     box-shadow: inset 9px 0 6px -1px rgb(0 0 0 / 0.02);
   }
 }
+
+/* ========================================
+   Mermaid Diagram - Modern & Responsive
+   ======================================== */
+
+.mermaid-diagram-container {
+  /* 부드러운 스크롤 */
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
+
+  /* 부드러운 그림자 */
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+
+  /* 부드러운 전환 효과 */
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.mermaid-diagram-container:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.08);
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* 커스텀 스크롤바 - 부드러운 스타일 */
+.mermaid-diagram-container::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.mermaid-diagram-container::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.5);
+  border-radius: 10px;
+  margin: 4px;
+}
+
+.mermaid-diagram-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(156, 163, 175, 0.5) 0%, rgba(107, 114, 128, 0.5) 100%);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.2s ease;
+}
+
+.mermaid-diagram-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.7) 0%, rgba(75, 85, 99, 0.7) 100%);
+}
+
+/* SVG 스타일 - 반응형 & 부드러운 렌더링 */
+.mermaid-diagram-container svg {
+  max-width: none !important;
+  height: auto !important;
+  display: block;
+  margin: 0 auto;
+
+  /* 부드러운 렌더링 */
+  shape-rendering: geometricPrecision;
+  text-rendering: optimizeLegibility;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+/* 노드 스타일 개선 - 둥근 모서리와 그림자 */
+.mermaid-diagram-container .node rect,
+.mermaid-diagram-container .node polygon,
+.mermaid-diagram-container .node circle,
+.mermaid-diagram-container .node ellipse {
+  /* 부드러운 그림자 */
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.mermaid-diagram-container .node:hover rect,
+.mermaid-diagram-container .node:hover polygon,
+.mermaid-diagram-container .node:hover circle,
+.mermaid-diagram-container .node:hover ellipse {
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15));
+  transform: translateY(-1px);
+}
+
+/* 텍스트 스타일 개선 */
+.mermaid-diagram-container .nodeLabel,
+.mermaid-diagram-container .edgeLabel {
+  overflow: visible !important;
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* 라인 스타일 - 부드럽고 현대적 */
+.mermaid-diagram-container .edgePath .path,
+.mermaid-diagram-container .flowchart-link {
+  stroke-width: 2;
+  transition: stroke-width 0.2s ease, stroke 0.2s ease;
+}
+
+.mermaid-diagram-container .edgePath:hover .path,
+.mermaid-diagram-container .flowchart-link:hover {
+  stroke-width: 2.5;
+}
+
+/* 화살표 스타일 */
+.mermaid-diagram-container .arrowheadPath {
+  transition: fill 0.2s ease;
+}
+
+/* 클러스터/서브그래프 스타일 */
+.mermaid-diagram-container .cluster rect {
+  rx: 8px !important;
+  ry: 8px !important;
+  stroke-width: 2;
+}
+
+/* 라벨 박스 스타일 */
+.mermaid-diagram-container .labelBox {
+  rx: 6px;
+  ry: 6px;
+}
+
+/* 다크모드 스타일 */
+.dark .mermaid-diagram-container {
+  scrollbar-color: rgba(75, 85, 99, 0.4) transparent;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
+}
+
+.dark .mermaid-diagram-container:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  border-color: rgba(99, 102, 241, 0.5) !important;
+}
+
+.dark .mermaid-diagram-container::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.5);
+}
+
+.dark .mermaid-diagram-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(75, 85, 99, 0.5) 0%, rgba(55, 65, 81, 0.5) 100%);
+}
+
+.dark .mermaid-diagram-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, rgba(107, 114, 128, 0.7) 0%, rgba(75, 85, 99, 0.7) 100%);
+}
+
+.dark .mermaid-diagram-container .node rect,
+.dark .mermaid-diagram-container .node polygon,
+.dark .mermaid-diagram-container .node circle,
+.dark .mermaid-diagram-container .node ellipse {
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+}
+
+.dark .mermaid-diagram-container .node:hover rect,
+.dark .mermaid-diagram-container .node:hover polygon,
+.dark .mermaid-diagram-container .node:hover circle,
+.dark .mermaid-diagram-container .node:hover ellipse {
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
+}
+
+/* 반응형 디자인 - 모바일 최적화 */
+@media (max-width: 640px) {
+  .mermaid-diagram-container {
+    padding: 1rem !important;
+  }
+
+  .mermaid-diagram-container svg {
+    /* 모바일에서는 약간 축소 */
+    transform: scale(0.9);
+    transform-origin: top left;
+  }
+
+  /* 스크롤바 크기 축소 */
+  .mermaid-diagram-container::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mermaid-diagram-container svg {
+    transform: scale(0.85);
+  }
+}
+
+/* 태블릿 최적화 */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .mermaid-diagram-container svg {
+    transform: scale(0.95);
+    transform-origin: top center;
+  }
+}
+
+/* 프린트 최적화 */
+@media print {
+  .mermaid-diagram-container {
+    border: 1px solid #000;
+    box-shadow: none;
+    overflow: visible !important;
+  }
+
+  .mermaid-diagram-container svg {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+}
+
+/* ========================================
+   노드 스타일 강화 - 더 둥글고 현대적
+   ======================================== */
+
+/* 플로차트 노드 - 둥근 사각형 */
+.mermaid-diagram-container .node rect {
+  rx: 12px !important;
+  ry: 12px !important;
+  stroke-width: 2.5;
+}
+
+/* 결정 노드 (다이아몬드) - 부드러운 회전 */
+.mermaid-diagram-container .node polygon {
+  stroke-width: 2.5;
+}
+
+/* 원형 노드 - 더 부드러운 테두리 */
+.mermaid-diagram-container .node circle {
+  stroke-width: 2.5;
+}
+
+/* 타원 노드 */
+.mermaid-diagram-container .node ellipse {
+  stroke-width: 2.5;
+}
+
+/* 시퀀스 다이어그램 액터 박스 - 둥근 모서리 */
+.mermaid-diagram-container .actor {
+  rx: 8px !important;
+  ry: 8px !important;
+}
+
+/* 노트/메모 박스 - 더 둥글게 */
+.mermaid-diagram-container .note {
+  rx: 10px !important;
+  ry: 10px !important;
+}
+
+/* 라벨 배경 - 부드러운 스타일 */
+.mermaid-diagram-container .labelBox {
+  rx: 8px !important;
+  ry: 8px !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+}
+
+/* 간트 차트 바 - 둥근 모서리 */
+.mermaid-diagram-container .task {
+  rx: 6px !important;
+  ry: 6px !important;
+}
+
+/* 애니메이션 효과 - 부드러운 페이드인 */
+@keyframes mermaidFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mermaid-diagram-container svg {
+  animation: mermaidFadeIn 0.5s ease-out;
+}
+
+/* 노드 호버 시 부드러운 강조 효과 */
+.mermaid-diagram-container .node {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* 엣지 라벨 배경 - 더 부드러운 스타일 */
+.mermaid-diagram-container .edgeLabel .label {
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.dark .mermaid-diagram-container .edgeLabel .label {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(71, 85, 105, 0.8);
+}
+
+/* 클러스터 제목 스타일 */
+.mermaid-diagram-container .cluster-label {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* 아이콘 스타일 (Font Awesome 등) */
+.mermaid-diagram-container .fa,
+.mermaid-diagram-container .fas,
+.mermaid-diagram-container .far {
+  font-size: 1.1em;
+  vertical-align: middle;
+}
+
+/* ER 다이어그램 엔티티 - 둥근 모서리 */
+.mermaid-diagram-container .er.entityBox {
+  rx: 10px !important;
+  ry: 10px !important;
+  stroke-width: 2.5;
+}
+
+/* 상태 다이어그램 - 부드러운 스타일 */
+.mermaid-diagram-container .stateGroup rect {
+  rx: 10px !important;
+  ry: 10px !important;
+}
+
+.mermaid-diagram-container .state-note {
+  rx: 8px !important;
+  ry: 8px !important;
+}
+
+/* 그라데이션 정의 (선택적) */
+.mermaid-diagram-container defs {
+  /* 부드러운 그라데이션이 정의되면 여기서 커스터마이징 */
+}
+
+/* 마커 (화살표) 스타일 */
+.mermaid-diagram-container marker {
+  transition: fill 0.2s ease;
+}
+
+/* 접근성 개선 */
+.mermaid-diagram-container:focus-within {
+  outline: 2px solid rgba(99, 102, 241, 0.5);
+  outline-offset: 4px;
+}
+
+/* 로딩 스피너 애니메이션 */
+@keyframes mermaidPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.mermaid-diagram-container.opacity-50 {
+  animation: mermaidPulse 2s ease-in-out infinite;
+}

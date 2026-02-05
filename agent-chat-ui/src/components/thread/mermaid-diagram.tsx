@@ -86,17 +86,99 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
       return;
     }
 
-    // Mermaid 초기화
+    // 다크모드 확인
+    const isDark = document.documentElement.classList.contains('dark');
+
+    // Mermaid 초기화 - 현대적이고 부드러운 스타일
     mermaid.initialize({
       startOnLoad: false,
-      theme: "default",
+      theme: "base",  // base 테마로 커스터마이징
       securityLevel: "loose",
-      fontFamily: "inherit",
-      // 렌더링 안정성을 위한 추가 설정
+      fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      // 텍스트 잘림 방지 설정
       flowchart: {
-        useMaxWidth: true,
+        useMaxWidth: false,
         htmlLabels: true,
-        curve: "basis",
+        curve: "basis",  // 부드러운 곡선
+        padding: 24,
+        wrappingWidth: 200,
+        nodeSpacing: 60,  // 노드 간격 증가
+        rankSpacing: 60,  // 레벨 간격 증가
+      },
+      // 커스텀 테마 변수 - 현대적이고 부드러운 디자인
+      themeVariables: {
+        // 기본 색상 (라이트 모드)
+        primaryColor: isDark ? '#4f46e5' : '#6366f1',
+        primaryTextColor: isDark ? '#ffffff' : '#ffffff',
+        primaryBorderColor: isDark ? '#6366f1' : '#818cf8',
+
+        // 라인 색상
+        lineColor: isDark ? '#64748b' : '#94a3b8',
+
+        // 보조 색상
+        secondaryColor: isDark ? '#06b6d4' : '#0ea5e9',
+        tertiaryColor: isDark ? '#8b5cf6' : '#a855f7',
+
+        // 배경
+        mainBkg: isDark ? '#4f46e5' : '#6366f1',
+        secondBkg: isDark ? '#06b6d4' : '#0ea5e9',
+        tertiaryBkg: isDark ? '#8b5cf6' : '#a855f7',
+
+        // 노드 테두리
+        nodeBorder: isDark ? '#6366f1' : '#818cf8',
+        clusterBkg: isDark ? 'rgba(79, 70, 229, 0.1)' : 'rgba(99, 102, 241, 0.1)',
+        clusterBorder: isDark ? '#6366f1' : '#818cf8',
+
+        // 폰트
+        fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        fontSize: '15px',
+
+        // 엣지 라벨
+        edgeLabelBackground: isDark ? '#1e293b' : '#f8fafc',
+
+        // 활성 상태 색상
+        activeTaskBkgColor: isDark ? '#4f46e5' : '#6366f1',
+        activeTaskBorderColor: isDark ? '#6366f1' : '#818cf8',
+
+        // 그리드
+        gridColor: isDark ? '#334155' : '#e2e8f0',
+
+        // 시퀀스 다이어그램
+        actorBkg: isDark ? '#4f46e5' : '#6366f1',
+        actorBorder: isDark ? '#6366f1' : '#818cf8',
+        actorTextColor: '#ffffff',
+        actorLineColor: isDark ? '#64748b' : '#94a3b8',
+        signalColor: isDark ? '#cbd5e1' : '#475569',
+        signalTextColor: isDark ? '#e2e8f0' : '#1e293b',
+        labelBoxBkgColor: isDark ? '#1e293b' : '#f8fafc',
+        labelBoxBorderColor: isDark ? '#475569' : '#cbd5e1',
+      },
+      // 추가 여백 설정
+      er: {
+        useMaxWidth: false,
+      },
+      sequence: {
+        useMaxWidth: false,
+        wrap: true,
+        width: 200,
+        height: 65,
+        boxMargin: 12,
+        messageMargin: 40,
+        mirrorActors: true,
+        bottomMarginAdj: 1,
+        actorFontSize: 15,
+        noteFontSize: 14,
+        messageFontSize: 14,
+      },
+      gantt: {
+        useMaxWidth: false,
+        fontSize: 14,
+        barHeight: 24,
+        barGap: 6,
+        topPadding: 60,
+        leftPadding: 100,
+        gridLineStartPadding: 40,
+        numberSectionStyles: 4,
       },
     });
 
@@ -148,18 +230,57 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
   return (
     <div
       className={cn(
-        "mermaid-diagram-container rounded-xl bg-muted/50 dark:bg-zinc-900 p-4 border border-border/30 dark:border-zinc-700 overflow-auto",
-        isLoading && "opacity-50",
+        "mermaid-diagram-container",
+        "rounded-2xl bg-gradient-to-br from-muted/30 to-muted/50",
+        "dark:from-zinc-900/50 dark:to-zinc-800/50",
+        "backdrop-blur-sm",
+        "p-6 sm:p-8 md:p-10",
+        "border border-border/40 dark:border-zinc-700/50",
+        "overflow-x-auto overflow-y-auto max-w-full",
+        "transition-all duration-300 ease-in-out",
+        isLoading && "opacity-50 animate-pulse",
         className
       )}
+      style={{
+        overflowX: 'auto',
+        maxWidth: '100%',
+        // 부드러운 그라데이션 배경
+        backgroundImage: document.documentElement.classList.contains('dark')
+          ? 'linear-gradient(135deg, rgba(24, 24, 27, 0.5) 0%, rgba(39, 39, 42, 0.5) 100%)'
+          : 'linear-gradient(135deg, rgba(248, 250, 252, 0.5) 0%, rgba(241, 245, 249, 0.5) 100%)',
+      }}
     >
       <div
         ref={ref}
-        className="flex items-center justify-center min-h-[200px]"
+        className="flex items-center justify-center min-h-[200px] w-fit min-w-full"
+        style={{
+          display: 'inline-block',
+          minWidth: '100%',
+        }}
       />
       {isLoading && (
-        <div className="text-center text-sm text-muted-foreground py-4">
-          다이어그램 렌더링 중...
+        <div className="text-center text-sm text-muted-foreground py-4 flex items-center justify-center gap-2">
+          <svg
+            className="animate-spin h-4 w-4"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+          <span>다이어그램 렌더링 중...</span>
         </div>
       )}
     </div>
