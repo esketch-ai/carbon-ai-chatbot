@@ -408,14 +408,56 @@ class RAGTool:
             return True  # 확인 실패 시 기존 DB 사용
 
     def _rebuild_vectorstore(self):
-        """기존 벡터 DB를 삭제하고 재구축"""
+        """기존 벡터 DB를 백업 후 재구축"""
         import shutil
-        logger.info("기존 벡터 DB를 삭제합니다...")
-        try:
-            shutil.rmtree(str(self.chroma_db_path))
-            logger.info("기존 벡터 DB 삭제 완료")
-        except Exception as e:
-            logger.error(f"벡터 DB 삭제 실패: {e}")
+        from datetime import datetime
+
+        if self.chroma_db_path.exists():
+            # 백업 생성
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = Path(f"{self.chroma_db_path}.backup.{timestamp}")
+
+            try:
+                logger.info(f"벡터 DB 백업 생성 중: {backup_path}")
+                shutil.copytree(self.chroma_db_path, backup_path)
+                logger.info(f"✓ 백업 완료: {backup_path}")
+            except Exception as e:
+                logger.error(f"백업 생성 실패: {e}")
+                raise RuntimeError(f"벡터 DB 백업 실패: {e}")
+
+            # 기존 DB 삭제
+            try:
+                logger.info("기존 벡터 DB 삭제 중...")
+                shutil.rmtree(str(self.chroma_db_path))
+                logger.info("기존 벡터 DB 삭제 완료")
+            except Exception as e:
+                logger.error(f"벡터 DB 삭제 실패: {e}")
+                logger.info("백업에서 복구 시도 중...")
+                shutil.copytree(backup_path, self.chroma_db_path)
+                raise RuntimeError(f"벡터 DB 삭제 실패, 복구됨: {e}")
+
+            # 오래된 백업 정리
+            self._cleanup_old_backups(keep_count=3)
+
+    def _cleanup_old_backups(self, keep_count: int = 3):
+        """오래된 백업 파일 정리"""
+        import shutil
+
+        parent_dir = self.chroma_db_path.parent
+        backup_pattern = f"{self.chroma_db_path.name}.backup.*"
+
+        backups = sorted(
+            parent_dir.glob(backup_pattern),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
+
+        for old_backup in backups[keep_count:]:
+            try:
+                shutil.rmtree(old_backup)
+                logger.info(f"오래된 백업 삭제: {old_backup}")
+            except Exception as e:
+                logger.warning(f"백업 삭제 실패: {old_backup} - {e}")
 
     def _build_vectorstore_if_needed(self) -> bool:
         """벡터 DB가 없으면 자동으로 구축, 차원 불일치 시 재구축"""
