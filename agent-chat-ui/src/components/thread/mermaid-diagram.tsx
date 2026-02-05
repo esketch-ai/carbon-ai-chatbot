@@ -97,13 +97,13 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
       fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       // 텍스트 잘림 방지 설정
       flowchart: {
-        useMaxWidth: false,
+        useMaxWidth: true,  // 컨테이너 너비에 맞춤
         htmlLabels: true,
         curve: "basis",  // 부드러운 곡선
-        padding: 24,
-        wrappingWidth: 200,
-        nodeSpacing: 60,  // 노드 간격 증가
-        rankSpacing: 60,  // 레벨 간격 증가
+        padding: 20,
+        wrappingWidth: 150,  // 텍스트 줄바꿈 너비 줄임
+        nodeSpacing: 50,
+        rankSpacing: 50,
       },
       // 커스텀 테마 변수 - 현대적이고 부드러운 디자인
       themeVariables: {
@@ -155,29 +155,29 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
       },
       // 추가 여백 설정
       er: {
-        useMaxWidth: false,
+        useMaxWidth: true,
       },
       sequence: {
-        useMaxWidth: false,
+        useMaxWidth: true,
         wrap: true,
-        width: 200,
-        height: 65,
-        boxMargin: 12,
-        messageMargin: 40,
+        width: 150,
+        height: 60,
+        boxMargin: 10,
+        messageMargin: 35,
         mirrorActors: true,
         bottomMarginAdj: 1,
-        actorFontSize: 15,
-        noteFontSize: 14,
-        messageFontSize: 14,
+        actorFontSize: 14,
+        noteFontSize: 13,
+        messageFontSize: 13,
       },
       gantt: {
-        useMaxWidth: false,
-        fontSize: 14,
-        barHeight: 24,
-        barGap: 6,
-        topPadding: 60,
-        leftPadding: 100,
-        gridLineStartPadding: 40,
+        useMaxWidth: true,
+        fontSize: 13,
+        barHeight: 20,
+        barGap: 4,
+        topPadding: 50,
+        leftPadding: 80,
+        gridLineStartPadding: 35,
         numberSectionStyles: 4,
       },
     });
@@ -231,18 +231,17 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
     <div
       className={cn(
         "mermaid-diagram-container",
-        "rounded-2xl bg-gradient-to-br from-muted/30 to-muted/50",
+        "rounded-xl bg-gradient-to-br from-muted/30 to-muted/50",
         "dark:from-zinc-900/50 dark:to-zinc-800/50",
         "backdrop-blur-sm",
-        "p-6 sm:p-8 md:p-10",
+        "p-4 sm:p-5 md:p-6",
         "border border-border/40 dark:border-zinc-700/50",
-        "overflow-x-auto overflow-y-auto max-w-full",
+        "overflow-hidden max-w-full",
         "transition-all duration-300 ease-in-out",
         isLoading && "opacity-50 animate-pulse",
         className
       )}
       style={{
-        overflowX: 'auto',
         maxWidth: '100%',
         // 부드러운 그라데이션 배경
         backgroundImage: document.documentElement.classList.contains('dark')
@@ -252,11 +251,7 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
     >
       <div
         ref={ref}
-        className="flex items-center justify-center min-h-[200px] w-fit min-w-full"
-        style={{
-          display: 'inline-block',
-          minWidth: '100%',
-        }}
+        className="flex items-center justify-center min-h-[200px] w-full"
       />
       {isLoading && (
         <div className="text-center text-sm text-muted-foreground py-4 flex items-center justify-center gap-2">
