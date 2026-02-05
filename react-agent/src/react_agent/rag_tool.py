@@ -354,6 +354,7 @@ class RAGTool:
                                 'section_title': section_title,
                                 'keywords': ', '.join(keywords),
                                 'original_content': chunk,
+                                'context': context,  # 문맥 추가 (평가용)
                             }
                         )
                         documents.append(doc)
@@ -371,7 +372,8 @@ class RAGTool:
         """기존 벡터 DB의 임베딩 차원이 현재 모델과 일치하는지 확인"""
         try:
             test_embedding = self.embeddings.embed_query("test")
-            current_dim = len(test_embedding)
+            # numpy 배열이나 리스트를 안전하게 처리
+            current_dim = int(len(test_embedding)) if hasattr(test_embedding, '__len__') else 0
 
             temp_store = Chroma(
                 persist_directory=str(self.chroma_db_path),
@@ -379,16 +381,24 @@ class RAGTool:
             )
             collection = temp_store._collection
             count = collection.count()
-            if count == 0:
+            # numpy 배열을 정수로 변환
+            count_int = int(count) if hasattr(count, '__iter__') else count
+            if count_int == 0:
                 return True  # 비어있으면 호환으로 간주
 
             # 기존 DB에서 하나 가져와서 차원 확인
             result = collection.peek(limit=1)
-            if result and result.get('embeddings') and len(result['embeddings']) > 0:
-                db_dim = len(result['embeddings'][0])
-                if db_dim != current_dim:
+            embeddings_list = result.get('embeddings') if result else None
+            has_embeddings = embeddings_list is not None and int(len(embeddings_list)) > 0
+            if has_embeddings:
+                first_embedding = embeddings_list[0]
+                # numpy 배열이면 정수로 변환
+                db_dim = int(len(first_embedding))
+                current_dim_int = int(current_dim)
+
+                if db_dim != current_dim_int:
                     logger.warning(
-                        f"임베딩 차원 불일치! DB: {db_dim}, 현재 모델: {current_dim}. "
+                        f"임베딩 차원 불일치! DB: {db_dim}, 현재 모델: {current_dim_int}. "
                         f"벡터 DB를 재구축합니다."
                     )
                     return False
@@ -576,7 +586,7 @@ class RAGTool:
                 self._graph_manager = None
         return self._graph_manager
 
-    def search_documents(self, query: str, k: int = 3, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
+    def search_documents(self, query: str, k: int = 4, similarity_threshold: float = 0.55, include_context: bool = False) -> List[Dict[str, Any]]:
         """
         문서 검색 (코사인 유사도 기반)
 
@@ -584,6 +594,7 @@ class RAGTool:
             query: 검색 쿼리
             k: 반환할 문서 수
             similarity_threshold: 코사인 유사도 임계값
+            include_context: 문맥을 포함할지 여부 (기본: False, 청크만 반환)
 
         Returns:
             관련 문서 리스트
@@ -640,8 +651,16 @@ class RAGTool:
 
                 seen_keys.add(doc_key)
 
+                # 문맥 포함 여부에 따라 content 구성
+                if include_context:
+                    context = doc.metadata.get('context', '')
+                    original = doc.metadata.get('original_content', doc.page_content)
+                    content = f"{context}\n\n{original}" if context else original
+                else:
+                    content = doc.metadata.get('original_content', doc.page_content)
+
                 filtered_docs.append({
-                    'content': doc.metadata.get('original_content', doc.page_content),
+                    'content': content,
                     'source': source,
                     'filename': doc.metadata.get('filename', 'unknown'),
                     'chunk_index': chunk_index,
