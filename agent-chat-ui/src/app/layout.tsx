@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import React from "react";
-import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "Agent Chat",
@@ -16,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <NuqsAdapter>{children}</NuqsAdapter>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
