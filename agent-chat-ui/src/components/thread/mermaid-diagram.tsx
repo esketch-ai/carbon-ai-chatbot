@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
 import { cn } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 
 interface MermaidDiagramProps {
   code: string;
@@ -197,9 +198,9 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
         }
       })
       .catch((err) => {
-        console.error("Mermaid rendering error:", err);
-        console.error("Original code:", code);
-        console.error("Cleaned code:", cleanedCode);
+        logger.error("Mermaid rendering error:", err);
+        logger.error("Original code:", code);
+        logger.error("Cleaned code:", cleanedCode);
         setError(err.message || "다이어그램을 렌더링할 수 없습니다.");
         setIsLoading(false);
       });

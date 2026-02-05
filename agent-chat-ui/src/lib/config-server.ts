@@ -3,6 +3,7 @@ import path from "node:path";
 import yaml from "js-yaml";
 
 import { ChatConfig, defaultConfig, mergeConfig } from "./config";
+import { logger } from "@/lib/logger";
 
 const CONFIG_FILES = ["settings.yaml", "chat-config.yaml"];
 
@@ -16,12 +17,12 @@ async function loadServerChatCategories(): Promise<any | undefined> {
     const filePath = path.join(process.cwd(), "public", "chat-categories.yaml");
     const contents = await readFile(filePath, "utf8");
     const data = yaml.load(contents) as { categories?: any };
-    console.log("Server: chat-categories.yaml loaded successfully");
+    logger.info("Server: chat-categories.yaml loaded successfully");
     return data.categories;
   } catch (error: unknown) {
     const err = error as { code?: string };
     if (err?.code !== "ENOENT") {
-      console.warn("Server: Failed to load chat-categories.yaml:", error);
+      logger.warn("Server: Failed to load chat-categories.yaml:", error);
     }
     return undefined;
   }
@@ -37,12 +38,12 @@ async function loadServerChatOpeners(): Promise<string[] | undefined> {
     const filePath = path.join(process.cwd(), "public", "chat-openers.yaml");
     const contents = await readFile(filePath, "utf8");
     const data = yaml.load(contents) as { chatOpeners?: string[] };
-    console.log("Server: chat-openers.yaml loaded successfully,", data.chatOpeners?.length, "items");
+    logger.info("Server: chat-openers.yaml loaded successfully,", data.chatOpeners?.length, "items");
     return data.chatOpeners;
   } catch (error: unknown) {
     const err = error as { code?: string };
     if (err?.code !== "ENOENT") {
-      console.warn("Server: Failed to load chat-openers.yaml:", error);
+      logger.warn("Server: Failed to load chat-openers.yaml:", error);
     }
     return undefined;
   }
@@ -73,14 +74,14 @@ export async function loadServerConfig(): Promise<ChatConfig> {
     } catch (error: unknown) {
       const err = error as { code?: string };
       if (err?.code !== "ENOENT") {
-        console.error(`Failed to load ${file}:`, error);
+        logger.error(`Failed to load ${file}:`, error);
       }
       // Try the next file if the current one doesn't exist.
     }
   }
 
   if (!config) {
-    console.warn("Falling back to default config. No config file found on server.");
+    logger.warn("Falling back to default config. No config file found on server.");
     config = defaultConfig;
   }
 

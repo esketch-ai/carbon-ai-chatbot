@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { useStream } from "@langchain/langgraph-sdk/react";
 import { type Message } from "@langchain/langgraph-sdk";
+import { logger } from "@/lib/logger";
 import {
   uiMessageReducer,
   isUIMessage,
@@ -50,17 +51,17 @@ async function checkGraphStatus(
   apiUrl: string,
   apiKey: string | null,
 ): Promise<boolean> {
-  console.log("[checkGraphStatus] Checking connection to:", apiUrl);
-  console.log("[checkGraphStatus] API Key:", apiKey ? `${apiKey.substring(0, 10)}...` : "none");
+  logger.debug("[checkGraphStatus] Checking connection to:", apiUrl);
+  logger.debug("[checkGraphStatus] API Key:", apiKey ? `${apiKey.substring(0, 10)}...` : "none");
 
   if (!apiUrl || apiUrl.trim() === "") {
-    console.error("[checkGraphStatus] ❌ API URL is empty");
+    logger.error("[checkGraphStatus] API URL is empty");
     return false;
   }
 
   try {
     const url = `${apiUrl}/info`;
-    console.log("[checkGraphStatus] Fetching:", url);
+    logger.debug("[checkGraphStatus] Fetching:", url);
 
     const res = await fetch(url, {
       ...(apiKey && {
@@ -70,12 +71,12 @@ async function checkGraphStatus(
       }),
     });
 
-    console.log("[checkGraphStatus] Response status:", res.status, res.statusText);
+    logger.debug("[checkGraphStatus] Response status:", res.status, res.statusText);
     const isOk = res.ok;
-    console.log(`[checkGraphStatus] ${isOk ? "✅" : "❌"} Connection ${isOk ? "successful" : "failed"}`);
+    logger.debug(`[checkGraphStatus] Connection ${isOk ? "successful" : "failed"}`);
     return isOk;
   } catch (e) {
-    console.error("[checkGraphStatus] ❌ Error:", e);
+    logger.error("[checkGraphStatus] Error:", e);
     return false;
   }
 }
@@ -113,29 +114,29 @@ const StreamSession = ({
 
   const handleThreadId = useCallback(
     (id: string) => {
-      console.log("[StreamSession] New thread ID received:", id);
+      logger.debug("[StreamSession] New thread ID received:", id);
       setThreadId(id);
       resetTimer();
 
       // 즉시 히스토리 갱신 시도
-      console.log("[StreamSession] Immediately refetching threads list...");
+      logger.debug("[StreamSession] Immediately refetching threads list...");
       getThreads()
         .then((threads) => {
-          console.log("[StreamSession] Threads fetched:", threads.length, "threads");
+          logger.debug("[StreamSession] Threads fetched:", threads.length, "threads");
           setThreads(threads);
 
           // 만약 새 스레드가 아직 안 보이면 짧은 지연 후 다시 시도
           if (!threads.find(t => t.thread_id === id)) {
-            console.log("[StreamSession] New thread not found, retrying after 300ms...");
+            logger.debug("[StreamSession] New thread not found, retrying after 300ms...");
             sleep(300).then(() => {
               getThreads()
                 .then(setThreads)
-                .catch(console.error);
+                .catch((err) => logger.error("[StreamSession] Retry error:", err));
             });
           }
         })
         .catch((error) => {
-          console.error("[StreamSession] Error fetching threads:", error);
+          logger.error("[StreamSession] Error fetching threads:", error);
         });
     },
     [setThreadId, getThreads, setThreads, resetTimer]
@@ -154,16 +155,16 @@ const StreamSession = ({
   // 채팅 기록 로드 확인을 위한 로깅
   useEffect(() => {
     if (threadId) {
-      console.log("[StreamSession] Thread ID in URL:", threadId);
-      console.log("[StreamSession] Messages count:", streamValue.messages?.length || 0);
-      console.log("[StreamSession] Is loading:", streamValue.isLoading);
-      console.log("[StreamSession] Messages:", streamValue.messages?.map(m => ({
+      logger.debug("[StreamSession] Thread ID in URL:", threadId);
+      logger.debug("[StreamSession] Messages count:", streamValue.messages?.length || 0);
+      logger.debug("[StreamSession] Is loading:", streamValue.isLoading);
+      logger.debug("[StreamSession] Messages:", streamValue.messages?.map(m => ({
         type: m.type,
         id: m.id,
         content: typeof m.content === 'string' ? m.content.substring(0, 50) : 'complex'
       })));
     } else {
-      console.log("[StreamSession] No thread ID - new conversation");
+      logger.debug("[StreamSession] No thread ID - new conversation");
     }
   }, [threadId, streamValue.messages?.length, streamValue.isLoading, streamValue.messages]);
 
@@ -246,7 +247,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   // Log connection parameters
-  console.log("[StreamProvider] Connection parameters:", {
+  logger.debug("[StreamProvider] Connection parameters:", {
     apiUrl,
     envApiUrl,
     finalApiUrl,

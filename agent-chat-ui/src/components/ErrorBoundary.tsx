@@ -2,6 +2,7 @@
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, ChevronDown, ChevronUp } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 interface Props {
   children: ReactNode;
@@ -31,8 +32,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error to console for debugging
-    console.error('ErrorBoundary caught error:', error, errorInfo);
+    // Log error for debugging
+    logger.error('ErrorBoundary caught error:', error, errorInfo);
 
     // Store error info for display
     this.setState({ errorInfo });

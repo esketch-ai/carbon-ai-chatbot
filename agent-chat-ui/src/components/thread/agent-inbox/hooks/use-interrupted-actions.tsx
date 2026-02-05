@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { HumanInterrupt, HumanResponse } from "@langchain/langgraph/prebuilt";
 import { END } from "@langchain/langgraph/web";
 import { useStreamContext } from "@/hooks/useStreamContext";
+import { logger } from "@/lib/logger";
 
 interface UseInterruptedActionsInput {
   interrupt: HumanInterrupt;
@@ -76,7 +77,7 @@ export default function useInterruptedActions({
       setHumanResponse(responses);
       setAcceptAllowed(hasAccept);
     } catch (e) {
-      console.error("Error formatting and setting human response state", e);
+      logger.error("Error formatting and setting human response state", e);
     }
   }, [interrupt]);
 
@@ -92,7 +93,7 @@ export default function useInterruptedActions({
       );
       return true;
     } catch (e: unknown) {
-      console.error("Error sending human response", e);
+      logger.error("Error sending human response", e);
       return false;
     }
   };
@@ -178,7 +179,7 @@ export default function useInterruptedActions({
           setStreamFinished(true);
         }
       } catch (e: unknown) {
-        console.error("Error sending human response", e);
+        logger.error("Error sending human response", e);
 
         const error = e as { message?: string };
         if (error.message && error.message.includes("Invalid assistant ID")) {
@@ -268,7 +269,7 @@ export default function useInterruptedActions({
         duration: 3000,
       });
     } catch (e) {
-      console.error("Error marking thread as resolved", e);
+      logger.error("Error marking thread as resolved", e);
       toast.error("Error", {
         description: "Failed to mark thread as resolved.",
         richColors: true,

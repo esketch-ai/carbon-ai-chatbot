@@ -1,6 +1,7 @@
 "use client";
 
 import { Settings as SettingsIcon, RefreshCw, Trash2, Plus } from "lucide-react";
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -139,7 +140,7 @@ export function SettingsDialog() {
       // Reload the page to reset the chat interface
       window.location.reload();
     } catch (err) {
-      console.error("Error deleting threads:", err);
+      logger.error("Error deleting threads:", err);
       toast.error("Failed to delete all conversations");
     } finally {
       setIsDeleting(false);

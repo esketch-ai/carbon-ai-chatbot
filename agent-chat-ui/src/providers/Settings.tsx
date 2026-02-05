@@ -5,6 +5,7 @@ import React, {
   ReactNode,
 } from "react";
 import { ChatConfig, defaultConfig, loadConfig } from "@/lib/config";
+import { logger } from "@/lib/logger";
 
 // User settings that can be customized in the UI
 export interface UserSettings {
@@ -36,7 +37,7 @@ function loadUserSettings(): Partial<UserSettings> {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch (error) {
-    console.error("Error loading user settings:", error);
+    logger.error("Error loading user settings:", error);
     return {};
   }
 }
@@ -47,7 +48,7 @@ function saveUserSettings(settings: UserSettings) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch (error) {
-    console.error("Error saving user settings:", error);
+    logger.error("Error saving user settings:", error);
   }
 }
 

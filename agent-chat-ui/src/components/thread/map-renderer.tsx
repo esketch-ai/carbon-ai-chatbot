@@ -8,6 +8,7 @@ import { HexagonLayer } from "@deck.gl/aggregation-layers";
 import type { Layer } from "@deck.gl/core";
 import { cn } from "@/lib/utils";
 import { safeParseJSON } from "@/lib/json-sanitizer";
+import { logger } from "@/lib/logger";
 import "leaflet/dist/leaflet.css";
 
 // 전역 활성 맵 관리 
@@ -357,7 +358,7 @@ export function MapRenderer({ config, className }: MapRendererProps) {
       }
       setIsLoading(false);
     } catch (err) {
-      console.error("Map config parsing error:", err);
+      logger.error("Map config parsing error:", err);
       setError(err instanceof Error ? err.message : "맵을 렌더링할 수 없습니다.");
       setIsLoading(false);
     }

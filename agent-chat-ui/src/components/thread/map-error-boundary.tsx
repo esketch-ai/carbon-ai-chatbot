@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { logger } from "@/lib/logger";
 
 interface Props {
   children: React.ReactNode;
@@ -23,7 +24,7 @@ export class MapErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("Map rendering error:", error, errorInfo);
+    logger.error("Map rendering error:", error, errorInfo);
   }
 
   render() {

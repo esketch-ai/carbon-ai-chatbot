@@ -5,6 +5,7 @@ import { AgGridReact } from "ag-grid-react";
 import { ModuleRegistry, AllCommunityModule, ColDef } from "ag-grid-community";
 import { cn } from "@/lib/utils";
 import { safeParseJSON } from "@/lib/json-sanitizer";
+import { logger } from "@/lib/logger";
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
@@ -66,14 +67,14 @@ export function AGGridTable({ config, className }: AGGridTableProps) {
 
       // rowData가 빈 배열인 경우 (경고만, 에러는 아님)
       if (parsedConfig.rowData.length === 0) {
-        console.warn("AG Grid: rowData가 비어있습니다. 빈 테이블이 표시됩니다.");
+        logger.warn("AG Grid: rowData가 비어있습니다. 빈 테이블이 표시됩니다.");
       }
 
       setGridConfig(parsedConfig);
       setIsLoading(false);
     } catch (err) {
-      console.error("AG Grid error:", err);
-      console.error("Config:", typeof config === "string" ? config.substring(0, 200) : config);
+      logger.error("AG Grid error:", err);
+      logger.error("Config:", typeof config === "string" ? config.substring(0, 200) : config);
       setError(err instanceof Error ? err.message : "테이블을 렌더링할 수 없습니다.");
       setIsLoading(false);
     }

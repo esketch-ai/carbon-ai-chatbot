@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { safeParseJSON } from "@/lib/json-sanitizer";
+import { logger } from "@/lib/logger";
 
 const KAKAO_API_KEY = "ac3864d73fb04009cd4bfc502c9c19a4";
 
@@ -40,7 +41,7 @@ const loadKakaoMapScript = (): Promise<void> => {
     script.onload = () => {
       if (window.kakao && window.kakao.maps) {
         window.kakao.maps.load(() => {
-          console.log("카카오 지도 로드 완료");
+          logger.debug("카카오 지도 로드 완료");
           resolve();
         });
       } else {
@@ -127,12 +128,12 @@ export function KakaoMap({ config, className }: KakaoMapProps) {
     loadKakaoMapScript()
       .then(() => {
         if (isMounted) {
-          console.log("카카오 지도 스크립트 로드 성공");
+          logger.debug("카카오 지도 스크립트 로드 성공");
           setIsScriptLoaded(true);
         }
       })
       .catch((err) => {
-        console.error("카카오 지도 로드 에러:", err);
+        logger.error("카카오 지도 로드 에러:", err);
         if (isMounted) {
           setError(err.message || "카카오 지도를 로드할 수 없습니다.");
           setIsLoading(false);
@@ -170,7 +171,7 @@ export function KakaoMap({ config, className }: KakaoMapProps) {
       setMapConfig(parsedConfig);
       setIsLoading(false);
     } catch (err) {
-      console.error("Kakao Map config error:", err);
+      logger.error("Kakao Map config error:", err);
       setError(err instanceof Error ? err.message : "지도를 렌더링할 수 없습니다.");
       setIsLoading(false);
     }
@@ -272,7 +273,7 @@ export function KakaoMap({ config, className }: KakaoMapProps) {
         });
       }
     } catch (err) {
-      console.error("Kakao Map initialization error:", err);
+      logger.error("Kakao Map initialization error:", err);
       setError("지도를 초기화할 수 없습니다.");
     }
   }, [isScriptLoaded, mapConfig, activeMarker]);

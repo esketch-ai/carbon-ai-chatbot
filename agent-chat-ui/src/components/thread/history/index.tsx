@@ -8,6 +8,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { DesktopSidebar } from "./components/DesktopSidebar";
 import { MobileSidebar } from "./components/MobileSidebar";
 import { useSession } from "@/hooks/useSession";
+import { logger } from "@/lib/logger";
 
 interface ThreadHistoryProps {
   onShowGuide?: () => void;
@@ -40,7 +41,7 @@ export default function ThreadHistory({ onShowGuide }: ThreadHistoryProps) {
     getThreads()
       .then(setThreads)
       .catch((error) => {
-        console.error(error);
+        logger.error("Error loading threads:", error);
         setThreads([]); // Set empty array on error to show clean empty state
       })
       .finally(() => setThreadsLoading(false));

@@ -3,6 +3,7 @@ import { ReactNode, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { UI } from "@/lib/constants";
+import { logger } from "@/lib/logger";
 import { useStreamContext } from "@/hooks/useStreamContext";
 import { useState, FormEvent } from "react";
 import { Button } from "../ui/button";
@@ -243,7 +244,7 @@ export function Thread() {
     const finalContext =
       Object.keys(context).length > 0 ? context : undefined;
 
-    console.log("[Thread] Submitting message:", {
+    logger.debug("[Thread] Submitting message:", {
       threadId: threadId || "new",
       messageCount: stream.messages.length,
       hasContext: !!finalContext,

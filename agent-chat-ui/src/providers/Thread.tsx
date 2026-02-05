@@ -1,5 +1,6 @@
 import { validate } from "uuid";
 import { getApiKey } from "@/lib/api-key";
+import { logger } from "@/lib/logger";
 import { Thread } from "@langchain/langgraph-sdk";
 import { useQueryState } from "nuqs";
 import {
@@ -51,7 +52,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     if (!finalApiUrl || !finalAssistantId) return [];
     const client = createClient(finalApiUrl, getApiKey() ?? undefined);
 
-    console.log("[ThreadProvider] Loading threads with:", {
+    logger.debug("[ThreadProvider] Loading threads with:", {
       apiUrl: finalApiUrl,
       assistantId: finalAssistantId,
     });

@@ -1,4 +1,5 @@
 import { createClient } from "@/providers/client";
+import { logger } from "@/lib/logger";
 
 /**
  * UUID validation regex pattern
@@ -68,13 +69,13 @@ export async function getAssistant(
   apiKey?: string
 ): Promise<Assistant | null> {
   if (!assistantId) {
-    console.warn("Assistant ID is missing, skipping assistant API call");
+    logger.warn("Assistant ID is missing, skipping assistant API call");
     return null;
   }
 
   // Skip API call for non-UUID strings (like "agent")
   if (!isValidUUID(assistantId)) {
-    console.info(`"${assistantId}" is not a UUID, skipping direct lookup`);
+    logger.info(`"${assistantId}" is not a UUID, skipping direct lookup`);
     return null;
   }
 
@@ -83,7 +84,7 @@ export async function getAssistant(
     const assistant = await client.assistants.get(assistantId);
     return assistant as Assistant;
   } catch (error) {
-    console.error(`Failed to fetch assistant "${assistantId}":`, error);
+    logger.error(`Failed to fetch assistant "${assistantId}":`, error);
     return null;
   }
 }
@@ -98,7 +99,7 @@ export async function searchAssistants(
     const response = await client.assistants.search(request);
     return response as Assistant[];
   } catch (error) {
-    console.error("Failed to search assistants:", error);
+    logger.error("Failed to search assistants:", error);
     return [];
   }
 }
@@ -109,7 +110,7 @@ export async function getAssistantSchemas(
   apiKey?: string
 ): Promise<AssistantSchemas | null> {
   if (!assistantId) {
-    console.warn("Assistant ID is missing, skipping schemas API call");
+    logger.warn("Assistant ID is missing, skipping schemas API call");
     return null;
   }
 
@@ -118,7 +119,7 @@ export async function getAssistantSchemas(
     const schemas = await client.assistants.getSchemas(assistantId);
     return schemas as AssistantSchemas;
   } catch (error) {
-    console.error(`Failed to fetch assistant schemas for "${assistantId}":`, error);
+    logger.error(`Failed to fetch assistant schemas for "${assistantId}":`, error);
     return null;
   }
 }
@@ -130,7 +131,7 @@ export async function updateAssistantConfig(
   apiKey?: string
 ): Promise<Assistant | null> {
   if (!assistantId) {
-    console.error("Cannot update assistant config: assistant ID is missing");
+    logger.error("Cannot update assistant config: assistant ID is missing");
     return null;
   }
 
@@ -141,7 +142,7 @@ export async function updateAssistantConfig(
     });
     return assistant as Assistant;
   } catch (error) {
-    console.error(`Failed to update assistant config for "${assistantId}":`, error);
+    logger.error(`Failed to update assistant config for "${assistantId}":`, error);
     return null;
   }
 }

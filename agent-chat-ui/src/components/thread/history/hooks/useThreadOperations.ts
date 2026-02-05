@@ -4,6 +4,7 @@ import { useSession } from "@/hooks/useSession";
 import { useQueryState } from "nuqs";
 import { toast } from "sonner";
 import { UI_TEXT } from "../constants";
+import { logger } from "@/lib/logger";
 
 /**
  * Custom hook for thread CRUD operations
@@ -30,7 +31,7 @@ export function useThreadOperations() {
         resetSessionTimer();
       }
     } catch (error) {
-      console.error("Error deleting thread:", error);
+      logger.error("Error deleting thread:", error);
       toast.error(UI_TEXT.deleteError);
     }
   };
@@ -47,7 +48,7 @@ export function useThreadOperations() {
       const updatedThreads = await getThreads();
       setThreads(updatedThreads);
     } catch (error) {
-      console.error("Error updating thread title:", error);
+      logger.error("Error updating thread title:", error);
       toast.error(UI_TEXT.updateError);
     }
   };

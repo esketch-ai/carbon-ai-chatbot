@@ -5,6 +5,7 @@ import { AgCharts } from "ag-charts-react";
 import type { AgChartOptions } from "ag-charts-community";
 import { cn } from "@/lib/utils";
 import { safeParseJSON } from "@/lib/json-sanitizer";
+import { logger } from "@/lib/logger";
 
 interface AGChartProps {
   config: string | AgChartOptions;
@@ -85,8 +86,8 @@ export function AGChart({ config, className }: AGChartProps) {
       setChartOptions(defaultOptions);
       setIsLoading(false);
     } catch (err) {
-      console.error("AG Chart error:", err);
-      console.error("Config:", typeof config === "string" ? config.substring(0, 200) : config);
+      logger.error("AG Chart error:", err);
+      logger.error("Config:", typeof config === "string" ? config.substring(0, 200) : config);
       setError(err instanceof Error ? err.message : "차트를 렌더링할 수 없습니다.");
       setIsLoading(false);
     }

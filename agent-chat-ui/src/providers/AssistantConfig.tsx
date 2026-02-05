@@ -16,6 +16,7 @@ import {
   type AssistantSchemas,
   type Assistant,
 } from "@/lib/assistant-api";
+import { logger } from "@/lib/logger";
 
 export interface AssistantConfigContextType {
   config: AssistantConfigType | null;
@@ -68,7 +69,7 @@ export const AssistantConfigProvider: React.FC<{
       );
       setAssistants(list);
     } catch (error) {
-      console.error("Failed to fetch assistants:", error);
+      logger.error("Failed to fetch assistants:", error);
       setAssistants([]);
     } finally {
       setAssistantsLoading(false);
@@ -76,7 +77,7 @@ export const AssistantConfigProvider: React.FC<{
   }, [apiUrl, apiKey]);
 
   const fetchConfig = useCallback(async () => {
-    console.log("[AssistantConfig] fetchConfig called with:", {
+    logger.debug("[AssistantConfig] fetchConfig called with:", {
       apiUrl,
       initialAssistantId,
       apiKey: apiKey ? `${apiKey.substring(0, 10)}...` : "none",
@@ -87,7 +88,7 @@ export const AssistantConfigProvider: React.FC<{
 
     // Early return if no assistant ID provided
     if (!initialAssistantId || initialAssistantId.trim() === "") {
-      console.warn("[AssistantConfig] No assistant ID provided");
+      logger.warn("[AssistantConfig] No assistant ID provided");
       setIsLoading(false);
       setError("No assistant ID provided");
       return;
@@ -97,10 +98,10 @@ export const AssistantConfigProvider: React.FC<{
       let actualAssistantId = initialAssistantId;
       let assistant: Assistant | null = null;
 
-      console.log("[AssistantConfig] Checking if UUID:", initialAssistantId);
+      logger.debug("[AssistantConfig] Checking if UUID:", initialAssistantId);
       // If it's a valid UUID, try direct lookup first
       if (isValidUUID(initialAssistantId)) {
-        console.log("[AssistantConfig] Valid UUID, trying direct lookup");
+        logger.debug("[AssistantConfig] Valid UUID, trying direct lookup");
 
         assistant = await getAssistant(
           apiUrl,
@@ -112,7 +113,7 @@ export const AssistantConfigProvider: React.FC<{
       // If not found or not a UUID, search by graph_id
       // 기본 ReAct 그래프를 사용하므로 graph_id로 검색
       if (!assistant) {
-        console.log(
+        logger.debug(
           `[AssistantConfig] Not a UUID or not found, searching by graph_id: "${initialAssistantId}"`
         );
         
@@ -135,19 +136,19 @@ export const AssistantConfigProvider: React.FC<{
               apiKey || undefined
             );
 
-            console.log(`[AssistantConfig] Search attempt ${attempt}/${maxRetries} results:`, assistants);
+            logger.debug(`[AssistantConfig] Search attempt ${attempt}/${maxRetries} results:`, assistants);
 
             if (assistants.length > 0) {
               break;
             }
-            
+
             // 마지막 시도가 아니면 대기
             if (attempt < maxRetries) {
-              console.log(`[AssistantConfig] No assistant found, retrying in ${retryDelay}ms...`);
+              logger.debug(`[AssistantConfig] No assistant found, retrying in ${retryDelay}ms...`);
               await new Promise(resolve => setTimeout(resolve, retryDelay));
             }
           } catch (err) {
-            console.error(`[AssistantConfig] Search attempt ${attempt} failed:`, err);
+            logger.error(`[AssistantConfig] Search attempt ${attempt} failed:`, err);
             if (attempt < maxRetries) {
               await new Promise(resolve => setTimeout(resolve, retryDelay));
             } else {
@@ -158,18 +159,18 @@ export const AssistantConfigProvider: React.FC<{
 
         if (assistants.length > 0) {
           actualAssistantId = assistants[0].assistant_id;
-          console.log(
-            `[AssistantConfig] ✅ Resolved graph_id "${initialAssistantId}" to assistant ID: ${actualAssistantId}`
+          logger.info(
+            `[AssistantConfig] Resolved graph_id "${initialAssistantId}" to assistant ID: ${actualAssistantId}`
           );
           assistant = await getAssistant(
             apiUrl,
             actualAssistantId,
             apiKey || undefined
           );
-          console.log(`[AssistantConfig] Assistant details:`, assistant);
+          logger.debug(`[AssistantConfig] Assistant details:`, assistant);
         } else {
           const message = `No assistant found for graph_id: ${initialAssistantId}. Please ensure the backend server is running and has registered the graph.`;
-          console.error(`[AssistantConfig] ❌ ${message}`);
+          logger.error(`[AssistantConfig] ${message}`);
           setError(message);
           setConfig(null);
           setSchemas(null);
@@ -181,7 +182,7 @@ export const AssistantConfigProvider: React.FC<{
 
       if (!assistant) {
         const message = `Failed to load assistant configuration for ID: ${actualAssistantId}`;
-        console.error(message);
+        logger.error(message);
         setError(message);
         setConfig(null);
         setSchemas(null);
@@ -200,7 +201,7 @@ export const AssistantConfigProvider: React.FC<{
 
       setSchemas(assistantSchemas);
     } catch (err) {
-      console.error("Error fetching assistant config:", err);
+      logger.error("Error fetching assistant config:", err);
       setError("Unable to load assistant configuration");
     } finally {
       setIsLoading(false);
@@ -219,7 +220,7 @@ export const AssistantConfigProvider: React.FC<{
     newConfig: AssistantConfigType
   ): Promise<boolean> => {
     if (!assistantId) {
-      console.error("No assistant ID available for update");
+      logger.error("No assistant ID available for update");
       return false;
     }
 
@@ -236,7 +237,7 @@ export const AssistantConfigProvider: React.FC<{
       }
       return false;
     } catch (err) {
-      console.error("Failed to update config:", err);
+      logger.error("Failed to update config:", err);
       return false;
     }
   }, [apiUrl, assistantId, apiKey]);

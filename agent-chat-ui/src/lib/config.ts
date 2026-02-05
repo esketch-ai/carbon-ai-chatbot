@@ -1,4 +1,5 @@
 import yaml from "js-yaml";
+import { logger } from "@/lib/logger";
 
 export interface ChatConfig {
   branding: {
@@ -113,16 +114,16 @@ async function loadChatCategories(): Promise<any | undefined> {
   try {
     const response = await fetch("/chat-categories.yaml");
     if (!response.ok) {
-      console.warn("Failed to fetch chat-categories.yaml, status:", response.status);
+      logger.warn("Failed to fetch chat-categories.yaml, status:", response.status);
       return undefined;
     }
 
     const yamlText = await response.text();
-    console.log("chat-categories.yaml loaded successfully");
+    logger.info("chat-categories.yaml loaded successfully");
     const data = yaml.load(yamlText) as { categories?: any };
     return data.categories;
   } catch (error) {
-    console.warn("Failed to load chat-categories.yaml:", error);
+    logger.warn("Failed to load chat-categories.yaml:", error);
     return undefined;
   }
 }
@@ -132,17 +133,17 @@ async function loadChatOpeners(): Promise<string[] | undefined> {
   try {
     const response = await fetch("/chat-openers.yaml");
     if (!response.ok) {
-      console.warn("Failed to fetch chat-openers.yaml, status:", response.status);
+      logger.warn("Failed to fetch chat-openers.yaml, status:", response.status);
       return undefined;
     }
 
     const yamlText = await response.text();
-    console.log("chat-openers.yaml loaded successfully");
+    logger.info("chat-openers.yaml loaded successfully");
     const data = yaml.load(yamlText) as { chatOpeners?: string[] };
-    console.log("Parsed chat openers:", data.chatOpeners?.length, "items");
+    logger.debug("Parsed chat openers:", data.chatOpeners?.length, "items");
     return data.chatOpeners;
   } catch (error) {
-    console.warn("Failed to load chat-openers.yaml:", error);
+    logger.warn("Failed to load chat-openers.yaml:", error);
     return undefined;
   }
 }
@@ -156,7 +157,7 @@ export async function loadConfig(): Promise<ChatConfig> {
       response = await fetch("/chat-config.yaml");
     }
     if (!response.ok) {
-      console.warn("Failed to load settings.yaml or chat-config.yaml, using default config");
+      logger.warn("Failed to load settings.yaml or chat-config.yaml, using default config");
       return defaultConfig;
     }
     const yamlText = await response.text();
@@ -179,7 +180,7 @@ export async function loadConfig(): Promise<ChatConfig> {
 
     return mergedConfig;
   } catch (error) {
-    console.error("Error loading config:", error);
+    logger.error("Error loading config:", error);
     return defaultConfig;
   }
 }
