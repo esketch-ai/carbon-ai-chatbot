@@ -12,6 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 
 from react_agent.graph_multi import graph   # 멀티 에이전트 그래프 임포트
@@ -158,6 +161,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Rate limiter 설정
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS middleware - 환경변수 기반 origin 제한
 _origins_env = os.getenv(
     "ALLOWED_ORIGINS",
@@ -287,12 +295,14 @@ async def health_check():
 
 # Main chat endpoint (non-streaming)
 @app.post("/invoke", response_model=ChatResponse)
-async def invoke_agent(request: ChatRequest):
+@limiter.limit("20/minute")
+async def invoke_agent(request: Request, chat_request: ChatRequest):
     """
     Invoke the agent with a message and get a complete response.
 
     Args:
-        request: ChatRequest with message and optional parameters
+        request: FastAPI Request object (required for rate limiting)
+        chat_request: ChatRequest with message and optional parameters
 
     Returns:
         ChatResponse with agent's response
@@ -301,16 +311,16 @@ async def invoke_agent(request: ChatRequest):
         # Prepare configuration
         config = {
             "configurable": {
-                "model": request.model or "claude-haiku-4-5",
-                "category": request.category,
-                "thread_id": request.thread_id or "default"
+                "model": chat_request.model or "claude-haiku-4-5",
+                "category": chat_request.category,
+                "thread_id": chat_request.thread_id or "default"
             }
         }
 
         # Prepare input
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         input_data = {
-            "messages": [HumanMessage(content=request.message)]
+            "messages": [HumanMessage(content=chat_request.message)]
         }
 
         # Invoke the graph
@@ -334,12 +344,14 @@ async def invoke_agent(request: ChatRequest):
 
 # Streaming chat endpoint
 @app.post("/stream")
-async def stream_agent(request: ChatRequest):
+@limiter.limit("10/minute")
+async def stream_agent(request: Request, chat_request: ChatRequest):
     """
     Stream the agent's response token by token.
 
     Args:
-        request: ChatRequest with message and optional parameters
+        request: FastAPI Request object (required for rate limiting)
+        chat_request: ChatRequest with message and optional parameters
 
     Returns:
         StreamingResponse with agent's response chunks
@@ -348,16 +360,16 @@ async def stream_agent(request: ChatRequest):
         # Prepare configuration
         config = {
             "configurable": {
-                "model": request.model or "claude-haiku-4-5",
-                "category": request.category,
-                "thread_id": request.thread_id or "default"
+                "model": chat_request.model or "claude-haiku-4-5",
+                "category": chat_request.category,
+                "thread_id": chat_request.thread_id or "default"
             }
         }
 
         # Prepare input
         # IMPORTANT: Create HumanMessage object to avoid "complex" serialization
         input_data = {
-            "messages": [HumanMessage(content=request.message)]
+            "messages": [HumanMessage(content=chat_request.message)]
         }
 
         async def generate():
@@ -676,7 +688,8 @@ async def create_run(thread_id: str, request: Request):
 
 
 @app.post("/threads/{thread_id}/runs/stream")
-async def create_run_stream(thread_id: str, request: Request):
+@limiter.limit("10/minute")
+async def create_run_stream(request: Request, thread_id: str):
     """Create a streaming run in a thread (LangGraph Cloud API compatible)."""
     try:
         track_thread_activity(thread_id)
