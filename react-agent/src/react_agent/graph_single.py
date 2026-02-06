@@ -17,9 +17,9 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import MemorySaver
 
 from react_agent.configuration import Configuration
+from react_agent.checkpointer import get_checkpointer
 from react_agent.state import InputState, State
 from react_agent.tools import TOOLS, get_all_tools, search_knowledge_base, search
 from react_agent.utils import (
@@ -529,6 +529,6 @@ builder.add_conditional_edges(
 builder.add_edge("tools", "call_model")
 
 # Compile the builder into an executable graph with checkpointer
-# MemorySaver allows the graph to store and retrieve conversation history
-checkpointer = MemorySaver()
+# Checkpointer factory returns MemorySaver (default) or PostgresSaver (production)
+checkpointer = get_checkpointer()
 graph = builder.compile(name="ReAct Agent", checkpointer=checkpointer)

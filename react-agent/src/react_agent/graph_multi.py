@@ -16,9 +16,9 @@ from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import MemorySaver
 
 from react_agent.configuration import Configuration
+from react_agent.checkpointer import get_checkpointer
 from react_agent.state import InputState, State
 from react_agent.tools import get_all_tools
 
@@ -181,5 +181,6 @@ builder.add_conditional_edges(
 )
 
 # 컴파일
-checkpointer = MemorySaver()
+# Checkpointer factory returns MemorySaver (default) or PostgresSaver (production)
+checkpointer = get_checkpointer()
 graph = builder.compile(name="Multi-Agent System", checkpointer=checkpointer)
