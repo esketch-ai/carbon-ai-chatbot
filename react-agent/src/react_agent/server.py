@@ -7,14 +7,16 @@ import time
 import logging
 import asyncio
 import psutil
+import http
 from datetime import datetime
 from typing import Any, Dict, Optional, List
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, Response
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 import uvicorn
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
@@ -204,10 +206,186 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+# ============= RFC 7807 Problem Details Error Response =============
+class ErrorResponse(BaseModel):
+    """RFC 7807 Problem Details 기반 에러 응답 모델.
+
+    Provides a standardized error response format across all API endpoints.
+    Reference: https://datatracker.ietf.org/doc/html/rfc7807
+    """
+    type: str = Field(
+        default="about:blank",
+        description="A URI reference that identifies the problem type"
+    )
+    title: str = Field(
+        ...,
+        description="A short, human-readable summary of the problem type"
+    )
+    status: int = Field(
+        ...,
+        description="The HTTP status code"
+    )
+    detail: str = Field(
+        ...,
+        description="A human-readable explanation specific to this occurrence"
+    )
+    instance: Optional[str] = Field(
+        default=None,
+        description="A URI reference that identifies the specific occurrence"
+    )
+    timestamp: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 timestamp when the error occurred"
+    )
+    trace_id: Optional[str] = Field(
+        default=None,
+        description="Unique identifier for tracing this error"
+    )
+
+
+def create_error_response(
+    status_code: int,
+    detail: str,
+    request: Request,
+    error_type: Optional[str] = None,
+    title: Optional[str] = None
+) -> JSONResponse:
+    """Create a standardized RFC 7807 error response.
+
+    Args:
+        status_code: HTTP status code
+        detail: Detailed error message
+        request: FastAPI Request object
+        error_type: Optional custom error type URI
+        title: Optional custom title (defaults to HTTP status phrase)
+
+    Returns:
+        JSONResponse with RFC 7807 compliant error body
+    """
+    # Generate trace ID for error tracking
+    trace_id = str(uuid.uuid4())[:8]
+
+    # Get HTTP status phrase as default title
+    try:
+        default_title = http.HTTPStatus(status_code).phrase
+    except ValueError:
+        default_title = "Unknown Error"
+
+    error_response = ErrorResponse(
+        type=error_type or f"/errors/{status_code}",
+        title=title or default_title,
+        status=status_code,
+        detail=detail,
+        instance=str(request.url),
+        timestamp=datetime.now().isoformat(),
+        trace_id=trace_id
+    )
+
+    # Log error for monitoring
+    logger.error(
+        f"[ERROR {trace_id}] {status_code} {error_response.title}: {detail} "
+        f"(endpoint: {request.url.path})"
+    )
+
+    return JSONResponse(
+        status_code=status_code,
+        content=error_response.model_dump(),
+        headers={"Content-Type": "application/problem+json"}
+    )
+
+
+# ============= Exception Handlers =============
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    """Handle HTTPException with RFC 7807 Problem Details format."""
+    # Track error metrics
+    ERROR_COUNT.labels(error_type="HTTPException", endpoint=request.url.path).inc()
+
+    return create_error_response(
+        status_code=exc.status_code,
+        detail=str(exc.detail),
+        request=request
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Handle request validation errors with RFC 7807 Problem Details format."""
+    # Track error metrics
+    ERROR_COUNT.labels(error_type="ValidationError", endpoint=request.url.path).inc()
+
+    # Format validation errors into readable message
+    errors = exc.errors()
+    if errors:
+        # Create a readable summary of validation errors
+        error_messages = []
+        for error in errors:
+            loc = " -> ".join(str(l) for l in error.get("loc", []))
+            msg = error.get("msg", "Validation error")
+            error_messages.append(f"{loc}: {msg}")
+        detail = "; ".join(error_messages)
+    else:
+        detail = "Request validation failed"
+
+    return create_error_response(
+        status_code=422,
+        detail=detail,
+        request=request,
+        error_type="/errors/validation",
+        title="Validation Error"
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Handle uncaught exceptions with RFC 7807 Problem Details format.
+
+    This is a catch-all handler for unexpected errors.
+    """
+    # Track error metrics
+    ERROR_COUNT.labels(error_type=type(exc).__name__, endpoint=request.url.path).inc()
+
+    # Log the full exception for debugging
+    logger.exception(f"Unhandled exception at {request.url.path}: {exc}")
+
+    # Don't expose internal error details in production
+    # Check if we're in debug mode
+    debug_mode = os.getenv("DEBUG", "false").lower() == "true"
+
+    if debug_mode:
+        detail = f"{type(exc).__name__}: {str(exc)}"
+    else:
+        detail = "An internal server error occurred. Please try again later."
+
+    return create_error_response(
+        status_code=500,
+        detail=detail,
+        request=request,
+        error_type="/errors/internal",
+        title="Internal Server Error"
+    )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Handle rate limit exceeded with RFC 7807 Problem Details format."""
+    # Track error metrics
+    ERROR_COUNT.labels(error_type="RateLimitExceeded", endpoint=request.url.path).inc()
+
+    return create_error_response(
+        status_code=429,
+        detail=f"Rate limit exceeded: {exc.detail}",
+        request=request,
+        error_type="/errors/rate-limit",
+        title="Too Many Requests"
+    )
+
+
 # Rate limiter 설정
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Note: RateLimitExceeded handler is defined above with RFC 7807 format
 
 # CORS middleware - 환경변수 기반 origin 제한
 _origins_env = os.getenv(
