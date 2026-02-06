@@ -28,21 +28,15 @@ from langchain_core.messages import AIMessage, HumanMessage   # 랭체인 메세
 from react_agent.rag_tool import get_rag_tool  # RAG 도구
 from react_agent.input_sanitizer import sanitize_user_input, detect_prompt_injection  # 입력 검증
 from react_agent.cache_manager import get_cache_manager  # 캐시 매니저
+from react_agent.logging_config import setup_logging, get_logger, LogContext, set_log_context, clear_log_context  # 구조화된 로깅
 
 # Load environment variables
 load_dotenv()
 
-# 애플리케이션 전체 로깅 설정 (모든 모듈의 logger.info()가 출력되도록)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
+# 구조화된 로깅 설정 (JSON for production, human-readable for development)
+setup_logging()
 
-# HTTP 요청 로그 노이즈 제거 (heartbeat 등)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ============= Prometheus Metrics =============
 # Request metrics
@@ -730,14 +724,29 @@ async def invoke_agent(request: Request, chat_request: ChatRequest):
     Returns:
         ChatResponse with agent's response
     """
+    # Generate request ID for tracing
+    request_id = str(uuid.uuid4())[:8]
+    thread_id = chat_request.thread_id or "default"
+    category = chat_request.category or "general"
+
+    # Set log context for this request
+    set_log_context(
+        request_id=request_id,
+        thread_id=thread_id,
+        category=category,
+        endpoint="/invoke"
+    )
+
     start_time = time.perf_counter()
     ACTIVE_REQUESTS.inc()
     status = "success"
     try:
+        logger.info("Invoke request received", extra={"message_length": len(chat_request.message)})
+
         # 입력 검증
         is_dangerous, pattern = detect_prompt_injection(chat_request.message)
         if is_dangerous:
-            logger.warning(f"[보안] 위험한 입력 감지: {pattern}")
+            logger.warning("Dangerous input detected", extra={"pattern": pattern})
 
         sanitized_message = sanitize_user_input(chat_request.message)
 
@@ -751,7 +760,6 @@ async def invoke_agent(request: Request, chat_request: ChatRequest):
         }
 
         # Track agent usage
-        category = chat_request.category or "general"
         AGENT_USAGE.labels(agent_type="invoke", category=category).inc()
 
         # Prepare input
@@ -778,11 +786,15 @@ async def invoke_agent(request: Request, chat_request: ChatRequest):
     except Exception as e:
         status = "error"
         ERROR_COUNT.labels(error_type=type(e).__name__, endpoint="/invoke").inc()
+        logger.error("Invoke request failed", extra={"error": str(e), "error_type": type(e).__name__})
         raise HTTPException(status_code=500, detail=f"Error invoking agent: {str(e)}")
     finally:
+        elapsed = time.perf_counter() - start_time
         ACTIVE_REQUESTS.dec()
         REQUEST_COUNT.labels(endpoint="/invoke", method="POST", status=status).inc()
-        REQUEST_LATENCY.labels(endpoint="/invoke").observe(time.perf_counter() - start_time)
+        REQUEST_LATENCY.labels(endpoint="/invoke").observe(elapsed)
+        logger.info("Invoke request completed", extra={"status": status, "duration_seconds": round(elapsed, 3)})
+        clear_log_context()
 
 
 # Streaming chat endpoint
@@ -799,18 +811,31 @@ async def stream_agent(request: Request, chat_request: ChatRequest):
     Returns:
         StreamingResponse with agent's response chunks
     """
+    # Generate request ID for tracing
+    request_id = str(uuid.uuid4())[:8]
+    thread_id = chat_request.thread_id or "default"
+    category = chat_request.category or "general"
+
     start_time = time.perf_counter()
     REQUEST_COUNT.labels(endpoint="/stream", method="POST", status="started").inc()
 
     # Track agent usage
-    category = chat_request.category or "general"
     AGENT_USAGE.labels(agent_type="stream", category=category).inc()
 
     try:
+        # Set log context for this request
+        set_log_context(
+            request_id=request_id,
+            thread_id=thread_id,
+            category=category,
+            endpoint="/stream"
+        )
+        logger.info("Stream request received", extra={"message_length": len(chat_request.message)})
+
         # 입력 검증
         is_dangerous, pattern = detect_prompt_injection(chat_request.message)
         if is_dangerous:
-            logger.warning(f"[보안] 위험한 입력 감지: {pattern}")
+            logger.warning("Dangerous input detected", extra={"pattern": pattern})
 
         sanitized_message = sanitize_user_input(chat_request.message)
 
@@ -1167,12 +1192,21 @@ async def create_run(thread_id: str, request: Request):
 @limiter.limit("10/minute")
 async def create_run_stream(request: Request, thread_id: str):
     """Create a streaming run in a thread (LangGraph Cloud API compatible)."""
+    # Generate request ID for tracing
+    request_id = str(uuid.uuid4())[:8]
     REQUEST_COUNT.labels(endpoint="/threads/runs/stream", method="POST", status="started").inc()
 
     try:
         track_thread_activity(thread_id)
         body = await request.json()
-        print(f"[STREAM] Request body: {body}")
+
+        # Set log context early
+        set_log_context(
+            request_id=request_id,
+            thread_id=thread_id,
+            endpoint="/threads/runs/stream"
+        )
+        logger.debug("Stream request body received", extra={"body_keys": list(body.keys())})
 
         # Extract input from body
         input_data = body.get("input", {})
@@ -1201,13 +1235,17 @@ async def create_run_stream(request: Request, thread_id: str):
         # 입력 검증
         is_dangerous, pattern = detect_prompt_injection(user_message)
         if is_dangerous:
-            logger.warning(f"[보안] 위험한 입력 감지: {pattern}")
+            logger.warning("Dangerous input detected", extra={"pattern": pattern})
 
         sanitized_message = sanitize_user_input(user_message)
 
         # Prepare configuration
         # Category can come from either context or config
         category = context.get("category") or config.get("configurable", {}).get("category")
+
+        # Update log context with category
+        set_log_context(category=category or "general")
+        logger.info("LangGraph stream request received", extra={"message_length": len(user_message)})
 
         # Track agent usage with category
         AGENT_USAGE.labels(agent_type="langgraph_stream", category=category or "general").inc()
@@ -1289,17 +1327,18 @@ async def create_run_stream(request: Request, thread_id: str):
 
                 # Send end event
                 total_elapsed = time.perf_counter() - t_total
-                logger.info(f"⏱️ [전체 요청] {total_elapsed:.2f}초 (thread: {thread_id})")
+                logger.info("Stream completed", extra={"duration_seconds": round(total_elapsed, 3), "chunk_count": chunk_count})
                 yield f"event: end\ndata: {{}}\n\n"
 
             except asyncio.CancelledError:
                 # Client disconnected - don't yield error event
                 stream_status = "cancelled"
+                logger.info("Stream cancelled by client")
                 raise
             except Exception as e:
                 stream_status = "error"
                 ERROR_COUNT.labels(error_type=type(e).__name__, endpoint="/threads/runs/stream").inc()
-                logger.error(f"❌ 스트리밍 오류: {e}")
+                logger.error("Streaming error", extra={"error": str(e), "error_type": type(e).__name__})
                 import traceback
                 traceback.print_exc()
                 error_json = json.dumps({"error": str(e), "message": str(e)})
@@ -1308,6 +1347,7 @@ async def create_run_stream(request: Request, thread_id: str):
                 ACTIVE_REQUESTS.dec()
                 REQUEST_COUNT.labels(endpoint="/threads/runs/stream", method="POST", status=stream_status).inc()
                 REQUEST_LATENCY.labels(endpoint="/threads/runs/stream").observe(time.perf_counter() - t_total)
+                clear_log_context()
 
         return StreamingResponse(
             generate(),
@@ -1322,9 +1362,10 @@ async def create_run_stream(request: Request, thread_id: str):
     except Exception as e:
         ERROR_COUNT.labels(error_type=type(e).__name__, endpoint="/threads/runs/stream").inc()
         REQUEST_COUNT.labels(endpoint="/threads/runs/stream", method="POST", status="error").inc()
-        print(f"[STREAM OUTER ERROR] {e}")
+        logger.error("Stream request failed", extra={"error": str(e), "error_type": type(e).__name__})
         import traceback
         traceback.print_exc()
+        clear_log_context()
         raise HTTPException(status_code=500, detail=f"Error creating streaming run: {str(e)}")
 
 
