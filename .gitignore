@@ -39,5 +39,13 @@ dist-ssr
 .env.local
 .env.production
 .env.development
+!.env.example
 .next/
 next-env.d.ts
+
+# Docker
+data/
+nginx/ssl/
+
+# Build artifacts
+*.tsbuildinfo

@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # ===========================================
+  # Backend API (FastAPI + LangGraph)
+  # ===========================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: carbonai-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-7860}:7860"
+    environment:
+      # API Keys (반드시 설정 필요)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+
+      # 서버 설정
+      - PORT=7860
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # CORS 설정
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
+
+      # Redis 캐시 (선택)
+      - USE_REDIS_CACHE=${USE_REDIS_CACHE:-false}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+
+      # PostgreSQL 체크포인터 (선택)
+      - USE_POSTGRES_CHECKPOINT=${USE_POSTGRES_CHECKPOINT:-false}
+      - POSTGRES_URL=${POSTGRES_URL:-}
+
+      # LangSmith 트레이싱 (선택)
+      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-carbon-ai-chatbot}
+    volumes:
+      # 지식베이스 및 벡터DB 영속화
+      - ./data/knowledge_base:/app/knowledge_base
+      - ./data/chroma_db:/app/chroma_db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - carbonai-network
+    depends_on:
+      - redis
+
+  # ===========================================
+  # Frontend (Next.js)
+  # ===========================================
+  frontend:
+    build:
+      context: ./agent-chat-ui
+      dockerfile: Dockerfile
+    container_name: carbonai-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://backend:7860}
+      - NEXT_PUBLIC_ASSISTANT_ID=${NEXT_PUBLIC_ASSISTANT_ID:-agent}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - carbonai-network
+    depends_on:
+      - backend
+
+  # ===========================================
+  # Redis Cache (선택적)
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: carbonai-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - carbonai-network
+
+  # ===========================================
+  # Nginx Reverse Proxy (선택적)
+  # ===========================================
+  nginx:
+    image: nginx:alpine
+    container_name: carbonai-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - carbonai-network
+    depends_on:
+      - frontend
+      - backend
+    profiles:
+      - with-nginx
+
+networks:
+  carbonai-network:
+    driver: bridge
+
+volumes:
+  redis-data:
