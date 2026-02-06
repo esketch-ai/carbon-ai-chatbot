@@ -81,7 +81,11 @@ export function BranchSwitcher({
   const index = branchOptions.indexOf(branch);
 
   return (
-    <div className="flex items-center gap-2">
+    <nav
+      className="flex items-center gap-2"
+      role="navigation"
+      aria-label="메시지 버전 탐색"
+    >
       <Button
         variant="ghost"
         size="icon"
@@ -91,11 +95,18 @@ export function BranchSwitcher({
           if (!prevBranch) return;
           onSelect(prevBranch);
         }}
-        disabled={isLoading}
+        disabled={isLoading || index === 0}
+        aria-label="이전 버전"
+        aria-disabled={isLoading || index === 0}
       >
-        <ChevronLeft />
+        <ChevronLeft aria-hidden="true" />
       </Button>
-      <span className="text-sm">
+      <span
+        className="text-sm"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <span className="sr-only">현재 버전:</span>
         {index + 1} / {branchOptions.length}
       </span>
       <Button
@@ -107,11 +118,13 @@ export function BranchSwitcher({
           if (!nextBranch) return;
           onSelect(nextBranch);
         }}
-        disabled={isLoading}
+        disabled={isLoading || index === branchOptions.length - 1}
+        aria-label="다음 버전"
+        aria-disabled={isLoading || index === branchOptions.length - 1}
       >
-        <ChevronRight />
+        <ChevronRight aria-hidden="true" />
       </Button>
-    </div>
+    </nav>
   );
 }
 

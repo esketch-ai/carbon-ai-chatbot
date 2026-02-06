@@ -52,15 +52,19 @@ export function ToolCalls({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="w-full border-b-2 border-blue-200 dark:border-blue-800 bg-blue-100/50 dark:bg-blue-900/30 px-5 py-4 text-left transition-all duration-200 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+          aria-expanded={isExpanded}
+          aria-controls="tool-calls-list"
+          aria-label={`도구 호출 내역 ${isExpanded ? '접기' : '펼치기'}`}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 dark:bg-blue-600">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 dark:bg-blue-600" aria-hidden="true">
                 <svg
                   className="h-4 w-4 text-white"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
+                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -72,7 +76,7 @@ export function ToolCalls({
               </div>
               <div>
                 <h3 className="font-semibold text-blue-900 dark:text-blue-100 text-base">
-                  🔧 Tool Use History
+                  도구 사용 내역
                 </h3>
                 <p className="text-xs text-blue-700 dark:text-blue-300">
                   {toolCalls.length}개의 도구 사용됨
@@ -82,6 +86,7 @@ export function ToolCalls({
             <motion.div
               animate={{ rotate: isExpanded ? 0 : -90 }}
               transition={{ duration: 0.25, ease: "easeInOut" }}
+              aria-hidden="true"
             >
               <ChevronDown className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </motion.div>
@@ -97,6 +102,9 @@ export function ToolCalls({
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
               className="overflow-hidden"
+              id="tool-calls-list"
+              role="list"
+              aria-label="사용된 도구 목록"
             >
               <div className="divide-y divide-blue-100 dark:divide-blue-900/50">
                 {toolCalls.map((tc, idx) => {
@@ -134,13 +142,18 @@ function ToolCallItem({
   const argEntries = Object.entries(args);
 
   return (
-    <div className={compact ? "" : "overflow-hidden rounded-xl border border-border/50 dark:border-border bg-card shadow-sm transition-all duration-200 hover:shadow-md hover:border-border dark:hover:border-border/80"}>
+    <div
+      className={compact ? "" : "overflow-hidden rounded-xl border border-border/50 dark:border-border bg-card shadow-sm transition-all duration-200 hover:shadow-md hover:border-border dark:hover:border-border/80"}
+      role="listitem"
+    >
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className={compact
           ? "w-full px-5 py-3 text-left transition-all duration-200 hover:bg-blue-50 dark:hover:bg-blue-900/20"
           : "w-full border-b border-border/50 dark:border-border bg-muted/30 dark:bg-muted/50 px-5 py-3.5 text-left transition-all duration-200 hover:bg-muted/50 dark:hover:bg-muted/70"
         }
+        aria-expanded={isExpanded}
+        aria-label={`${formatToolName(toolCall.name)} 상세 정보 ${isExpanded ? '접기' : '펼치기'}`}
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">

@@ -16,25 +16,37 @@ export function ThreadList({ threads, onThreadClick }: ThreadListProps) {
 
   return (
     <ThreadListContainer>
-      {threads.map((t) => {
-        const displayText = getThreadDisplayText(t);
+      <nav
+        role="navigation"
+        aria-label="대화 히스토리"
+      >
+        <ul
+          role="list"
+          aria-label="대화 목록"
+          className="flex flex-col"
+        >
+          {threads.map((t) => {
+            const displayText = getThreadDisplayText(t);
 
-        return (
-          <ThreadItem
-            key={t.thread_id}
-            thread={t}
-            isActive={threadId === t.thread_id}
-            displayText={displayText}
-            onSelect={() => {
-              onThreadClick?.(t.thread_id);
-              if (t.thread_id === threadId) return;
-              setThreadId(t.thread_id);
-            }}
-            onDelete={deleteThread}
-            onUpdateTitle={updateThreadTitle}
-          />
-        );
-      })}
+            return (
+              <li key={t.thread_id} role="listitem">
+                <ThreadItem
+                  thread={t}
+                  isActive={threadId === t.thread_id}
+                  displayText={displayText}
+                  onSelect={() => {
+                    onThreadClick?.(t.thread_id);
+                    if (t.thread_id === threadId) return;
+                    setThreadId(t.thread_id);
+                  }}
+                  onDelete={deleteThread}
+                  onUpdateTitle={updateThreadTitle}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
     </ThreadListContainer>
   );
 }

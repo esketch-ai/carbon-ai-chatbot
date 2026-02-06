@@ -79,8 +79,9 @@ function ScrollToBottom(props: { className?: string }) {
       variant="outline"
       className={props.className}
       onClick={() => scrollToBottom()}
+      aria-label="최하단으로 스크롤"
     >
-      <ArrowDown className="h-4 w-4" />
+      <ArrowDown className="h-4 w-4" aria-hidden="true" />
       <span>Scroll to bottom</span>
     </Button>
   );
@@ -308,11 +309,13 @@ export function Thread() {
                 <motion.button
                   className="flex cursor-pointer items-center gap-2"
                   onClick={() => { setThreadId(null); resetSessionTimer(); }}
+                  aria-label={`${config.branding.appName} - 새 대화 시작`}
+                  tabIndex={0}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={config.branding.logoPath}
-                    alt="Logo"
+                    alt={`${config.branding.appName} 로고`}
                     width={config.branding.logoWidth}
                     height={config.branding.logoHeight}
                   />
@@ -340,7 +343,12 @@ export function Thread() {
                 userSettings.chatWidth === "default" ? "max-w-3xl" : "max-w-5xl"
               )}
               content={
-                <>
+                <div
+                  role="log"
+                  aria-label="대화 메시지 목록"
+                  aria-live="polite"
+                  aria-relevant="additions"
+                >
                   {messages
                     .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
                     .map((message, index) =>
@@ -372,7 +380,7 @@ export function Thread() {
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading />
                   )}
-                </>
+                </div>
               }
               footer={
                 <div className="sticky bottom-0 flex flex-col items-center gap-10 bg-none">
@@ -452,6 +460,8 @@ export function Thread() {
                         "mx-auto grid grid-rows-[1fr_auto]",
                         userSettings.chatWidth === "default" ? "max-w-3xl" : "max-w-5xl"
                       )}
+                      role="search"
+                      aria-label="메시지 입력 폼"
                     >
                       <ContentBlocksPreview
                         blocks={contentBlocks}
@@ -480,7 +490,13 @@ export function Thread() {
                         rows={1}
                         style={{ maxHeight: `${UI.CHAT_TEXTAREA_MAX_HEIGHT}px` }}
                         className="field-sizing-content resize-none border-none bg-transparent px-4 pt-4 pb-2 text-base leading-relaxed shadow-none ring-0 outline-none focus:ring-0 focus:outline-none placeholder:text-muted-foreground overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
+                        aria-label="메시지 입력"
+                        aria-describedby="chat-input-hint"
+                        id="chat-message-input"
                       />
+                      <span id="chat-input-hint" className="sr-only">
+                        Enter 키를 눌러 메시지를 전송하세요. Shift+Enter로 줄바꿈할 수 있습니다.
+                      </span>
 
 
                       <div className="flex items-center justify-between gap-2 px-3 pb-3">
@@ -493,12 +509,21 @@ export function Thread() {
                                     <Label
                                       htmlFor="file-input"
                                       className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition-colors hover:bg-accent"
+                                      tabIndex={0}
+                                      role="button"
+                                      aria-label="파일 업로드"
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          document.getElementById('file-input')?.click();
+                                        }
+                                      }}
                                     >
-                                      <Paperclip className="h-4 w-4 text-muted-foreground" />
+                                      <Paperclip className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                                     </Label>
                                   </TooltipTrigger>
                                   <TooltipContent side="top">
-                                    <p>Upload files</p>
+                                    <p>파일 업로드</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -509,6 +534,7 @@ export function Thread() {
                                 multiple
                                 accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
                                 className="hidden"
+                                aria-label="파일 선택"
                               />
                             </>
                           )}
@@ -525,12 +551,14 @@ export function Thread() {
                                       ? "bg-muted text-muted-foreground hover:bg-accent"
                                       : "bg-primary text-primary-foreground hover:bg-primary/90"
                                   )}
+                                  aria-label={hideToolCalls ? "도구 호출 표시" : "도구 호출 숨기기"}
+                                  aria-pressed={!hideToolCalls}
                                 >
-                                  <Wrench className="h-4 w-4" />
+                                  <Wrench className="h-4 w-4" aria-hidden="true" />
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent side="top">
-                                <p>{hideToolCalls ? "Show tool calls" : "Hide tool calls"}</p>
+                                <p>{hideToolCalls ? "도구 호출 표시" : "도구 호출 숨기기"}</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -546,8 +574,10 @@ export function Thread() {
                             size="icon"
                             variant="outline"
                             className="h-8 w-8"
+                            aria-label="응답 생성 중지"
                           >
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+                            <span className="sr-only">응답 생성 중...</span>
                           </Button>
                         ) : (
                           <Button
@@ -558,8 +588,10 @@ export function Thread() {
                               isSubmitting ||
                               (!input.trim() && contentBlocks.length === 0)
                             }
+                            aria-label="메시지 전송"
+                            aria-disabled={isSubmitting || (!input.trim() && contentBlocks.length === 0)}
                           >
-                            <ArrowUp className="h-4 w-4" />
+                            <ArrowUp className="h-4 w-4" aria-hidden="true" />
                           </Button>
                         )}
                       </div>

@@ -83,20 +83,26 @@ export function ChatOpeners({ chatOpeners, onSelectOpener, disabled }: ChatOpene
   };
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-4xl mx-auto">
+    <section
+      className="flex flex-col gap-4 w-full max-w-4xl mx-auto"
+      aria-labelledby="welcome-heading"
+    >
       {/* 웰컴 헤더 */}
-      <div className="text-center mb-2">
-        <div className="text-4xl mb-2">🌍</div>
-        <h2 className="text-2xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-2">
+      <header className="text-center mb-2">
+        <div className="text-4xl mb-2" aria-hidden="true">🌍</div>
+        <h2
+          id="welcome-heading"
+          className="text-2xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-2"
+        >
           안녕하세요! CarbonAI입니다
         </h2>
         <p className="text-sm text-muted-foreground">
           탄소배출 관리부터 배출권 거래까지<br />
           전문적으로 안내해드립니다
         </p>
-      </div>
+      </header>
 
-      <div className="relative">
+      <div className="relative" role="region" aria-label="빠른 시작 옵션">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentPage}
@@ -105,6 +111,8 @@ export function ChatOpeners({ chatOpeners, onSelectOpener, disabled }: ChatOpene
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
             className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+            role="list"
+            aria-label="질문 옵션 목록"
           >
             {currentItems.map((opener, index) => {
               const option = matchOpenerToOption(opener);
@@ -127,9 +135,15 @@ export function ChatOpeners({ chatOpeners, onSelectOpener, disabled }: ChatOpene
                     "hover:scale-[1.02] active:scale-[0.98]",
                     disabled && "opacity-50 cursor-not-allowed hover:scale-100"
                   )}
+                  role="listitem"
+                  aria-label={`${displayText}${displayDesc ? `: ${displayDesc}` : ''}`}
+                  aria-disabled={disabled}
                 >
                   {/* 아이콘 */}
-                  <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-teal-100 to-emerald-100 dark:from-teal-900 dark:to-emerald-900 flex items-center justify-center text-2xl shadow-sm">
+                  <div
+                    className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-teal-100 to-emerald-100 dark:from-teal-900 dark:to-emerald-900 flex items-center justify-center text-2xl shadow-sm"
+                    aria-hidden="true"
+                  >
                     {displayIcon}
                   </div>
 
@@ -146,7 +160,7 @@ export function ChatOpeners({ chatOpeners, onSelectOpener, disabled }: ChatOpene
                   </div>
 
                   {/* 호버 효과 배경 */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" aria-hidden="true" />
                 </button>
               );
             })}
@@ -155,16 +169,20 @@ export function ChatOpeners({ chatOpeners, onSelectOpener, disabled }: ChatOpene
       </div>
 
       {shouldShowCarousel && (
-        <div className="flex items-center justify-center gap-2 mt-2">
+        <nav
+          className="flex items-center justify-center gap-2 mt-2"
+          role="navigation"
+          aria-label="페이지 탐색"
+        >
           <button
             onClick={goToPrevPage}
             className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 dark:border-teal-800 bg-white dark:bg-gray-900 hover:bg-teal-50 dark:hover:bg-teal-950 transition-colors"
-            aria-label="Previous page"
+            aria-label="이전 페이지"
           >
-            <ChevronLeft className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+            <ChevronLeft className="h-4 w-4 text-teal-600 dark:text-teal-400" aria-hidden="true" />
           </button>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5" role="tablist" aria-label="페이지 선택">
             {Array.from({ length: totalPages }).map((_, index) => (
               <button
                 key={index}
@@ -175,7 +193,10 @@ export function ChatOpeners({ chatOpeners, onSelectOpener, disabled }: ChatOpene
                     ? "w-6 bg-teal-500 dark:bg-teal-400"
                     : "w-2 bg-teal-200/50 dark:bg-teal-800/50 hover:bg-teal-300 dark:hover:bg-teal-700"
                 )}
-                aria-label={`Go to page ${index + 1}`}
+                aria-label={`${index + 1}페이지로 이동`}
+                aria-current={index === currentPage ? "page" : undefined}
+                role="tab"
+                aria-selected={index === currentPage}
               />
             ))}
           </div>
@@ -183,12 +204,12 @@ export function ChatOpeners({ chatOpeners, onSelectOpener, disabled }: ChatOpene
           <button
             onClick={goToNextPage}
             className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 dark:border-teal-800 bg-white dark:bg-gray-900 hover:bg-teal-50 dark:hover:bg-teal-950 transition-colors"
-            aria-label="Next page"
+            aria-label="다음 페이지"
           >
-            <ChevronRight className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+            <ChevronRight className="h-4 w-4 text-teal-600 dark:text-teal-400" aria-hidden="true" />
           </button>
-        </div>
+        </nav>
       )}
-    </div>
+    </section>
   );
 }

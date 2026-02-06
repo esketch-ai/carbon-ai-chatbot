@@ -176,7 +176,11 @@ export function AssistantMessage({
     preprocessStreamingMarkdown(displayedText, isStreaming);
 
   return (
-    <div className="group mr-auto flex items-start gap-3">
+    <article
+      className="group mr-auto flex items-start gap-3"
+      role="article"
+      aria-label="AI 응답"
+    >
       <div className="flex flex-col gap-3">
         <>
             {displayedText && (
@@ -259,17 +263,23 @@ export function AssistantMessage({
             </div>
           </>
       </div>
-    </div>
+    </article>
   );
 }
 
 export function AssistantMessageLoading() {
   return (
-    <div className="mr-auto flex items-start gap-3">
+    <div
+      className="mr-auto flex items-start gap-3"
+      role="status"
+      aria-label="AI가 응답을 생성하고 있습니다"
+      aria-live="polite"
+    >
       <div className="bg-muted flex h-9 items-center gap-1.5 rounded-2xl px-5 py-2.5 shadow-sm border border-border/20">
-        <div className="bg-foreground/40 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_infinite] rounded-full"></div>
-        <div className="bg-foreground/40 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_0.5s_infinite] rounded-full"></div>
-        <div className="bg-foreground/40 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_1s_infinite] rounded-full"></div>
+        <div className="bg-foreground/40 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_infinite] rounded-full" aria-hidden="true"></div>
+        <div className="bg-foreground/40 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_0.5s_infinite] rounded-full" aria-hidden="true"></div>
+        <div className="bg-foreground/40 h-1.5 w-1.5 animate-[pulse_1.5s_ease-in-out_1s_infinite] rounded-full" aria-hidden="true"></div>
+        <span className="sr-only">응답 생성 중...</span>
       </div>
     </div>
   );

@@ -74,11 +74,13 @@ export function HumanMessage({
   };
 
   return (
-    <div
+    <article
       className={cn(
         "group ml-auto flex items-center gap-2",
         isEditing && "w-full max-w-xl",
       )}
+      role="article"
+      aria-label="사용자 메시지"
     >
       <div className={cn("flex flex-col gap-2", isEditing && "w-full")}>
         {isEditing ? (
@@ -91,7 +93,11 @@ export function HumanMessage({
           <div className="flex flex-col gap-2">
             {/* Render images and files if no text */}
             {Array.isArray(message.content) && message.content.length > 0 && (
-              <div className="flex flex-wrap items-start justify-start gap-2">
+              <div
+                className="flex flex-wrap items-start justify-start gap-2"
+                role="group"
+                aria-label="첨부 파일"
+              >
                 {message.content.reduce<React.ReactNode[]>(
                   (acc, block, idx) => {
                     if (isBase64ContentBlock(block)) {
@@ -146,6 +152,6 @@ export function HumanMessage({
           />
         </div>
       </div>
-    </div>
+    </article>
   );
 }

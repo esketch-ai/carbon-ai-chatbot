@@ -67,22 +67,32 @@ export function CategorySelectors({
   };
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto px-4">
+    <section
+      className="flex flex-col gap-6 w-full max-w-5xl mx-auto px-4"
+      aria-labelledby="category-welcome-heading"
+    >
       {/* 웰컴 헤더 */}
-      <div className="text-center mb-4">
-        <div className="text-5xl mb-3">🌍</div>
-        <h2 className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-2">
+      <header className="text-center mb-4">
+        <div className="text-5xl mb-3" aria-hidden="true">🌍</div>
+        <h2
+          id="category-welcome-heading"
+          className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-2"
+        >
           안녕하세요! CarbonAI입니다
         </h2>
         <p className="text-sm text-muted-foreground">
           탄소배출 관리부터 배출권 거래까지<br />
           전문적으로 안내해드립니다
         </p>
-      </div>
+      </header>
 
       {!selectedCategory ? (
         /* 카테고리 선택 화면 */
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div
+          className="grid grid-cols-1 md:grid-cols-3 gap-4"
+          role="list"
+          aria-label="카테고리 목록"
+        >
           {categoryNames.map((categoryName) => {
             const category = categories[categoryName];
             return (
@@ -103,9 +113,12 @@ export function CategorySelectors({
                 )}
                 whileHover={{ y: -4 }}
                 whileTap={{ scale: 0.98 }}
+                role="listitem"
+                aria-label={`${categoryName}: ${category.description}`}
+                aria-disabled={disabled}
               >
                 {/* 아이콘 */}
-                <div className="text-5xl mb-2">{category.icon}</div>
+                <div className="text-5xl mb-2" aria-hidden="true">{category.icon}</div>
 
                 {/* 제목 */}
                 <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
@@ -118,26 +131,27 @@ export function CategorySelectors({
                 </p>
 
                 {/* 호버 효과 배경 */}
-                <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" aria-hidden="true" />
               </motion.button>
             );
           })}
         </div>
       ) : (
         /* 선택된 카테고리의 질문 오프너 화면 */
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4" role="region" aria-label={`${selectedCategory} 카테고리 질문 옵션`}>
           {/* 뒤로가기 버튼 */}
           <button
             onClick={handleBack}
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors self-start"
+            aria-label="카테고리 선택 화면으로 돌아가기"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             카테고리 선택으로 돌아가기
           </button>
 
           {/* 카테고리 헤더 */}
-          <div className="text-center mb-4">
-            <div className="text-4xl mb-2">
+          <header className="text-center mb-4">
+            <div className="text-4xl mb-2" aria-hidden="true">
               {selectedCategoryData?.icon}
             </div>
             <h3 className="text-2xl font-bold text-foreground mb-1">
@@ -146,10 +160,10 @@ export function CategorySelectors({
             <p className="text-sm text-muted-foreground">
               {selectedCategoryData?.description}
             </p>
-          </div>
+          </header>
 
           {/* 질문 오프너 그리드 */}
-          <div className="relative">
+          <div className="relative" role="region" aria-label="질문 옵션">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentPage}
@@ -158,6 +172,8 @@ export function CategorySelectors({
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
                 className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+                role="list"
+                aria-label="질문 옵션 목록"
               >
                 {currentOpeners.map((opener, index) => (
                   <button
@@ -175,11 +191,14 @@ export function CategorySelectors({
                       "hover:scale-[1.02] active:scale-[0.98]",
                       disabled && "opacity-50 cursor-not-allowed hover:scale-100"
                     )}
+                    role="listitem"
+                    aria-label={opener}
+                    aria-disabled={disabled}
                   >
                     <p className="text-sm text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
                       {opener}
                     </p>
-                    <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" aria-hidden="true" />
                   </button>
                 ))}
               </motion.div>
@@ -188,16 +207,20 @@ export function CategorySelectors({
 
           {/* 페이지네이션 */}
           {shouldShowCarousel && (
-            <div className="flex items-center justify-center gap-2 mt-2">
+            <nav
+              className="flex items-center justify-center gap-2 mt-2"
+              role="navigation"
+              aria-label="질문 옵션 페이지 탐색"
+            >
               <button
                 onClick={goToPrevPage}
                 className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 dark:border-teal-800 bg-white dark:bg-gray-900 hover:bg-teal-50 dark:hover:bg-teal-950 transition-colors"
-                aria-label="Previous page"
+                aria-label="이전 페이지"
               >
-                <ChevronLeft className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                <ChevronLeft className="h-4 w-4 text-teal-600 dark:text-teal-400" aria-hidden="true" />
               </button>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5" role="tablist" aria-label="페이지 선택">
                 {Array.from({ length: totalPages }).map((_, index) => (
                   <button
                     key={index}
@@ -208,7 +231,10 @@ export function CategorySelectors({
                         ? "w-6 bg-teal-500 dark:bg-teal-400"
                         : "w-2 bg-teal-200/50 dark:bg-teal-800/50 hover:bg-teal-300 dark:hover:bg-teal-700"
                     )}
-                    aria-label={`Go to page ${index + 1}`}
+                    aria-label={`${index + 1}페이지로 이동`}
+                    aria-current={index === currentPage ? "page" : undefined}
+                    role="tab"
+                    aria-selected={index === currentPage}
                   />
                 ))}
               </div>
@@ -216,15 +242,15 @@ export function CategorySelectors({
               <button
                 onClick={goToNextPage}
                 className="flex h-8 w-8 items-center justify-center rounded-full border border-teal-200 dark:border-teal-800 bg-white dark:bg-gray-900 hover:bg-teal-50 dark:hover:bg-teal-950 transition-colors"
-                aria-label="Next page"
+                aria-label="다음 페이지"
               >
-                <ChevronRight className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                <ChevronRight className="h-4 w-4 text-teal-600 dark:text-teal-400" aria-hidden="true" />
               </button>
-            </div>
+            </nav>
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
