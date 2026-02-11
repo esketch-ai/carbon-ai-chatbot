@@ -2,6 +2,7 @@
 
 from .classifier import ClassificationResult, RuleBasedClassifier
 from .crawler import BaseCrawler, CrawledContent, CrawlerRegistry, RSSCrawler
+from .expert_meeting import ExpertMeeting, MeetingResult, NewExpertProposal
 from .preprocessor import PreprocessedContent, Preprocessor
 from .sources import (
     DOMESTIC_SOURCES,
@@ -17,8 +18,11 @@ __all__ = [
     "CrawledContent",
     "CrawlerRegistry",
     "DOMESTIC_SOURCES",
+    "ExpertMeeting",
     "INTERNATIONAL_SOURCES",
     "MEDIA_SOURCES",
+    "MeetingResult",
+    "NewExpertProposal",
     "PreprocessedContent",
     "Preprocessor",
     "RSSCrawler",
