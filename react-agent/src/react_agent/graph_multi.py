@@ -131,7 +131,7 @@ async def clarification_agent(state: State) -> Dict[str, Any]:
 
 다음 중 해당하는 항목이 있다면 알려주세요:
 
-🔹 **탄소배출권** 관련 (거래, 시세, NET-Z 플랫폼 등)
+🔹 **탄소배출권** 관련 (거래, 시세, Carbon AIX 플랫폼 등)
 🔹 **규제대응** 관련 (배출량 계산, 법규 준수, 보고서 등)
 🔹 **고객지원** 관련 (서비스 이용, 계정 관리, 기술 문의 등)
 🔹 **기타** - 구체적으로 어떤 정보가 필요하신지 알려주세요
@@ -140,7 +140,7 @@ async def clarification_agent(state: State) -> Dict[str, Any]:
 💡 **예시로 질문을 다시 해주시면 더 정확한 답변이 가능합니다:**
 - "배출권 현재 시세가 어떻게 되나요?"
 - "우리 회사 Scope 1 배출량 계산 방법을 알려주세요"
-- "NET-Z 회원가입은 어떻게 하나요?"
+- "Carbon AIX 회원가입은 어떻게 하나요?"
 """
 
     response = AIMessage(content=clarification_message)

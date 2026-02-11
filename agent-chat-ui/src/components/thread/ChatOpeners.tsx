@@ -37,9 +37,9 @@ const WELCOME_OPTIONS = [
   },
   {
     icon: "🔍",
-    text: "NET-Z 플랫폼 안내",
+    text: "Carbon AIX 플랫폼 안내",
     desc: "플랫폼 사용법 및 기능 소개",
-    keywords: ["플랫폼", "NET-Z", "사용법"],
+    keywords: ["플랫폼", "Carbon AIX", "사용법"],
   },
 ];
 

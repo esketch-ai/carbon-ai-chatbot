@@ -95,7 +95,7 @@ async def _safe_rag_search(query: str, thread_id: Optional[str] = None) -> Dict[
     """RAG 검색을 안전하게 실행 (예외 처리 포함)
 
     RAG에서 문서를 찾지 못하면 웹 검색을 수행합니다.
-    단, NET-Z 관련 질문은 MCP 도구를 사용해야 하므로 웹 검색을 스킵합니다.
+    단, Carbon AIX 관련 질문은 MCP 도구를 사용해야 하므로 웹 검색을 스킵합니다.
 
     Args:
         query: 검색 쿼리
@@ -111,7 +111,7 @@ async def _safe_rag_search(query: str, thread_id: Optional[str] = None) -> Dict[
 
         # RAG에서 문서를 찾지 못한 경우
         if result.get("status") == "no_results":
-            # NET-Z 관련 질문인지 확인
+            # Carbon AIX 관련 질문인지 확인
             query_lower = query.lower()
             is_netz_query = any(kw in query_lower for kw in [
                 'netz', 'net-z', '넷지', '넷제로', 'mcp',
@@ -120,8 +120,8 @@ async def _safe_rag_search(query: str, thread_id: Optional[str] = None) -> Dict[
             ])
 
             if is_netz_query:
-                # NET-Z 질문은 웹 검색 스킵, LLM이 MCP 도구 사용하도록 유도
-                print(f"🔧 NET-Z 질문 감지 → MCP 도구 사용 대기")
+                # Carbon AIX 질문은 웹 검색 스킵, LLM이 MCP 도구 사용하도록 유도
+                print(f"🔧 Carbon AIX 질문 감지 → MCP 도구 사용 대기")
                 return result
 
             # 일반 질문은 웹 검색 폴백
@@ -162,7 +162,7 @@ def _get_category_prompt(base_prompt: str, category: str) -> str:
 **특화 답변 포인트:**
 - 배출권 유형별 상세 설명 (KOC, KCU, KAU 등)
 - 배출권 거래 절차 및 시장 동향
-- NET-Z 플랫폼 사용법 및 기능
+- Carbon AIX 플랫폼 사용법 및 기능
 - 배출권 가격 정보 및 시장 분석
 - 배출권 보유 관리 전략
 - 구매/판매 시 주의사항 및 절차
@@ -200,7 +200,7 @@ def _get_category_prompt(base_prompt: str, category: str) -> str:
 이 카테고리는 1:1 맞춤 상담, 서비스 안내, 문의사항에 특화되어 있습니다.
 
 **특화 답변 포인트:**
-- 후시파트너스 서비스 소개
+- Carbon AIX 서비스 소개
 - 기업 규모별 추천 솔루션
 - 서비스 이용 절차 안내
 - 비용 및 요금제 정보

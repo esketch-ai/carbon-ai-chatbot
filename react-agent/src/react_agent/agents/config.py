@@ -68,7 +68,7 @@ AGENT_REGISTRY = {
     AgentRole.CARBON_EXPERT: AgentConfig(
         role=AgentRole.CARBON_EXPERT,
         name="탄소배출권 전문가",
-        description="배출권 거래, NET-Z 플랫폼, 시장 분석",
+        description="배출권 거래, Carbon AIX 플랫폼, 시장 분석",
         model="claude-haiku-4-5",
         temperature=0.1,
         tools=[

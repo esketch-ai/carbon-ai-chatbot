@@ -54,7 +54,7 @@ def search_knowledge_base(
     """회사 지식베이스에서 관련 문서를 검색합니다.
 
     이 도구는 탄소 배출권 관련 문서를 찾습니다.
-    배출권 거래, 구매/판매 절차, NET-Z 플랫폼 사용법 등에 대한 질문에 사용하세요.
+    배출권 거래, 구매/판매 절차, Carbon AIX 플랫폼 사용법 등에 대한 질문에 사용하세요.
 
     **검색 방식** (RAG_SEARCH_MODE 환경변수로 선택):
     - **vector_only (기본)**: Contextual Retrieval 기반 벡터 검색
@@ -234,7 +234,7 @@ def geocode_location(query: str) -> dict[str, Any]:
 
 # mcp 통합
 
-# NET-Z MCP 클라이언트 (전역, lazy 초기화)
+# Carbon AIX MCP 클라이언트 (전역, lazy 초기화)
 _netz_mcp_client: Optional[SSEMCPClient] = None
 
 
@@ -248,11 +248,11 @@ async def _get_mcp_client() -> Optional[SSEMCPClient]:
     netz_enterprise_id = os.getenv("NETZ_ENTERPRISE_ID", "1")  # 기본값 1
 
     if not netz_enabled:
-        logger.info("[NET-Z MCP] 비활성화됨 (NETZ_MCP_ENABLED=false)")
+        logger.info("[Carbon AIX MCP] 비활성화됨 (NETZ_MCP_ENABLED=false)")
         return None
 
     if not netz_url:
-        logger.warning("[NET-Z MCP] URL이 설정되지 않았습니다")
+        logger.warning("[Carbon AIX MCP] URL이 설정되지 않았습니다")
         return None
 
     # 이미 초기화되어 있으면 상태 확인
@@ -266,10 +266,10 @@ async def _get_mcp_client() -> Optional[SSEMCPClient]:
         )
 
         if is_healthy:
-            logger.debug("[NET-Z MCP] 기존 연결 사용 (정상)")
+            logger.debug("[Carbon AIX MCP] 기존 연결 사용 (정상)")
             return _netz_mcp_client
         else:
-            logger.warning("[NET-Z MCP] 연결 상태 불량, 재초기화 중...")
+            logger.warning("[Carbon AIX MCP] 연결 상태 불량, 재초기화 중...")
             logger.debug(f"  running={_netz_mcp_client.running}, "
                         f"sse_task_done={_netz_mcp_client.sse_task.done() if _netz_mcp_client.sse_task else 'None'}, "
                         f"session_id={_netz_mcp_client.session_id}, "
@@ -277,21 +277,21 @@ async def _get_mcp_client() -> Optional[SSEMCPClient]:
             try:
                 await _netz_mcp_client.close()
             except Exception as e:
-                logger.error(f"[NET-Z MCP] 기존 연결 종료 실패: {e}")
+                logger.error(f"[Carbon AIX MCP] 기존 연결 종료 실패: {e}")
             _netz_mcp_client = None
 
     # 새로운 클라이언트 생성
     try:
-        logger.info(f"[NET-Z MCP] 클라이언트 초기화 시작: {netz_url} (Enterprise ID: {netz_enterprise_id})")
+        logger.info(f"[Carbon AIX MCP] 클라이언트 초기화 시작: {netz_url} (Enterprise ID: {netz_enterprise_id})")
         _netz_mcp_client = SSEMCPClient(
             base_url=netz_url,
             enterprise_id=netz_enterprise_id
         )
         await _netz_mcp_client.initialize()
-        logger.info("[NET-Z MCP] ✅ 클라이언트 초기화 완료")
+        logger.info("[Carbon AIX MCP] ✅ 클라이언트 초기화 완료")
         return _netz_mcp_client
     except Exception as e:
-        logger.error(f"[NET-Z MCP] 초기화 실패: {e}", exc_info=True)
+        logger.error(f"[Carbon AIX MCP] 초기화 실패: {e}", exc_info=True)
         _netz_mcp_client = None
         return None
 
@@ -319,10 +319,10 @@ def _create_mcp_tool(mcp_tool_def: Dict[str, Any]) -> Callable:
 
                 if client is None:
                     # 오류 시 문자열 직접 반환
-                    return "오류: NET-Z MCP 서버에 연결할 수 없습니다."
+                    return "오류: Carbon AIX MCP 서버에 연결할 수 없습니다."
 
-                logger.info(f"[NET-Z MCP] 도구 호출: {tool_name} (시도 {attempt + 1}/{max_retries})")
-                logger.debug(f"[NET-Z MCP] 인자: {kwargs}")
+                logger.info(f"[Carbon AIX MCP] 도구 호출: {tool_name} (시도 {attempt + 1}/{max_retries})")
+                logger.debug(f"[Carbon AIX MCP] 인자: {kwargs}")
 
                 # MCP 도구 호출
                 t_mcp = _time.perf_counter()
@@ -348,13 +348,13 @@ def _create_mcp_tool(mcp_tool_def: Dict[str, Any]) -> Callable:
                 return result
 
             except Exception as e:
-                logger.error(f"[NET-Z MCP 오류] {tool_name} (시도 {attempt + 1}/{max_retries}): {e}")
+                logger.error(f"[Carbon AIX MCP 오류] {tool_name} (시도 {attempt + 1}/{max_retries}): {e}")
 
                 # 연결 오류면 클라이언트 초기화 해제하고 재시도
                 if attempt < max_retries - 1:
                     global _netz_mcp_client
                     if _netz_mcp_client:
-                        logger.info(f"[NET-Z MCP] 클라이언트 재설정 후 재시도...")
+                        logger.info(f"[Carbon AIX MCP] 클라이언트 재설정 후 재시도...")
                         try:
                             await _netz_mcp_client.close()
                         except:
@@ -362,7 +362,7 @@ def _create_mcp_tool(mcp_tool_def: Dict[str, Any]) -> Callable:
                         _netz_mcp_client = None
                     await asyncio.sleep(0.5)  # 재시도 전 대기
                 else:
-                    logger.error(f"[NET-Z MCP 최종 실패] {tool_name}: {e}", exc_info=True)
+                    logger.error(f"[Carbon AIX MCP 최종 실패] {tool_name}: {e}", exc_info=True)
                     # 오류 시 문자열 직접 반환
                     return f"오류: MCP 도구 호출 실패 - {str(e)}"
 
@@ -433,16 +433,16 @@ async def _load_mcp_tools() -> List[Callable]:
         client = await _get_mcp_client()
 
         if client is None:
-            logger.warning("[NET-Z MCP] 클라이언트를 초기화할 수 없어 MCP 도구를 로드하지 않습니다")
+            logger.warning("[Carbon AIX MCP] 클라이언트를 초기화할 수 없어 MCP 도구를 로드하지 않습니다")
             _mcp_tools_loaded = True
             _mcp_tools_cache = []
             return []
 
         # MCP 서버에서 도구 목록 가져오기
-        logger.info("[NET-Z MCP] 도구 목록 조회 중...")
+        logger.info("[Carbon AIX MCP] 도구 목록 조회 중...")
         tools_list = await client.list_tools()
 
-        logger.info(f"[NET-Z MCP] {len(tools_list)}개 도구 발견")
+        logger.info(f"[Carbon AIX MCP] {len(tools_list)}개 도구 발견")
 
         # 각 MCP 도구를 LangChain 도구로 변환
         for mcp_tool in tools_list:
@@ -456,10 +456,10 @@ async def _load_mcp_tools() -> List[Callable]:
         _mcp_tools_cache = mcp_tools
         _mcp_tools_loaded = True
 
-        logger.info(f"[NET-Z MCP] ✓ {len(mcp_tools)}개 도구 로드 완료")
+        logger.info(f"[Carbon AIX MCP] ✓ {len(mcp_tools)}개 도구 로드 완료")
 
     except Exception as e:
-        logger.error(f"[NET-Z MCP] 도구 로드 실패: {e}", exc_info=True)
+        logger.error(f"[Carbon AIX MCP] 도구 로드 실패: {e}", exc_info=True)
         _mcp_tools_loaded = True
         _mcp_tools_cache = []
 
@@ -484,7 +484,7 @@ logger.info("  ✓ search - 일반 웹 검색")
 logger.info("  ✓ search_knowledge_base - 지식베이스 검색")
 logger.info("  ✓ classify_customer_segment - 고객 세그먼트 분류")
 logger.info("  ✓ geocode_location - 장소/주소 좌표 변환")
-logger.info("  → NET-Z MCP 도구는 첫 요청 시 자동으로 로드됩니다")
+logger.info("  → Carbon AIX MCP 도구는 첫 요청 시 자동으로 로드됩니다")
 
 
 async def get_all_tools() -> List[Callable[..., Any]]:
@@ -502,6 +502,6 @@ async def get_all_tools() -> List[Callable[..., Any]]:
 
     logger.info(f"[도구 목록] 총 {len(all_tools)}개 도구 사용 가능:")
     logger.info(f"  - 기본 도구: {len(_BASE_TOOLS)}개")
-    logger.info(f"  - NET-Z MCP 도구: {len(mcp_tools)}개")
+    logger.info(f"  - Carbon AIX MCP 도구: {len(mcp_tools)}개")
 
     return all_tools

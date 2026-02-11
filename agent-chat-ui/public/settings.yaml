@@ -1,9 +1,9 @@
 branding:
-  appName: "hooxibot"
-  logoPath: "/logo.png"
-  logoWidth: 28
-  logoHeight: 28
-  description: "hooxibot에게 무엇이든 물어보세요."
+  appName: "Carbon AIX"
+  logoPath: "/logo.svg"
+  logoWidth: 32
+  logoHeight: 32
+  description: "Carbon AIX에게 탄소정책에 대해 물어보세요."
   fullDescription: "/full-description.md"
 
 buttons:

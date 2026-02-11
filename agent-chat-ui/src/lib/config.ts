@@ -54,7 +54,7 @@ export interface ChatConfig {
 // Default configuration
 export const defaultConfig: ChatConfig = {
   branding: {
-    appName: "hooxibot",
+    appName: "Carbon AIX",
     logoPath: "/logo.png",
     logoWidth: 32,
     logoHeight: 32,

@@ -192,8 +192,8 @@ export function FloatingChat({
               <MessageCircle className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base sm:text-lg font-bold">후시봇</h3>
-              <p className="text-xs text-white/80">AI 탄소배출 전문 상담</p>
+              <h3 className="text-base sm:text-lg font-bold">Carbon AIX</h3>
+              <p className="text-xs text-white/80">AI 탄소정책 전문 어시스턴트</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
