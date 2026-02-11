@@ -5,14 +5,22 @@
 
 from .chunking import (
     ChunkMetadata,
+    EnhancedChunkMetadata,
     Chunk,
     SemanticChunker,
     get_chunker,
 )
+from .knowledge_base import (
+    KnowledgeBase,
+    KnowledgeBaseConfig,
+)
 
 __all__ = [
     "ChunkMetadata",
+    "EnhancedChunkMetadata",
     "Chunk",
     "SemanticChunker",
     "get_chunker",
+    "KnowledgeBase",
+    "KnowledgeBaseConfig",
 ]
