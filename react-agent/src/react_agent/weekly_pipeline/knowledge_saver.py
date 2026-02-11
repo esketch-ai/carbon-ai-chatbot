@@ -210,9 +210,8 @@ class KnowledgeSaver:
         lines.append(f"category: \"{classification.primary_expert.value}\"")
         lines.append(f"language: \"{content.original.language}\"")
         lines.append(f"word_count: {content.word_count}")
-        if classification.secondary_experts:
-            secondary = ", ".join([e.value for e in classification.secondary_experts])
-            lines.append(f"related_categories: \"{secondary}\"")
+        if classification.secondary_expert:
+            lines.append(f"related_categories: \"{classification.secondary_expert.value}\"")
         lines.append("---")
         lines.append("")
 
