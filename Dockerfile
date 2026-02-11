@@ -27,8 +27,9 @@ COPY react-agent/langgraph.json .
 # react-agent 패키지 설치
 RUN pip install --no-cache-dir -e .
 
-# 포트 설정 (Hugging Face Spaces는 7860 사용)
+# 환경 변수 설정
 ENV PORT=7860
+ENV KNOWLEDGE_BASE_PATH=/app/knowledge_base
 EXPOSE 7860
 
 # 헬스체크
