@@ -36,6 +36,43 @@ class ChunkMetadata:
 
 
 @dataclass
+class EnhancedChunkMetadata(ChunkMetadata):
+    """확장된 청크 메타데이터 (주간 분석용)
+
+    Attributes:
+        date_collected: 수집 일자 (YYYY-MM-DD)
+        analyzed_by: 분석한 전문가 역할 목록
+        confidence_score: 분석 신뢰도 (0.0-1.0)
+        related_chunks: 연관 청크 ID 목록
+        analysis_notes: 분석 노트
+    """
+    date_collected: str = ""
+    analyzed_by: List[str] = field(default_factory=list)
+    confidence_score: float = 0.0
+    related_chunks: List[str] = field(default_factory=list)
+    analysis_notes: str = ""
+
+    def to_dict(self) -> dict:
+        """딕셔너리로 변환"""
+        return {
+            "doc_id": self.doc_id,
+            "chunk_id": self.chunk_id,
+            "source": self.source,
+            "document_type": self.document_type,
+            "region": self.region,
+            "topic": self.topic,
+            "language": self.language,
+            "expert_domain": self.expert_domain,
+            "keywords": self.keywords,
+            "date_collected": self.date_collected,
+            "analyzed_by": self.analyzed_by,
+            "confidence_score": self.confidence_score,
+            "related_chunks": self.related_chunks,
+            "analysis_notes": self.analysis_notes,
+        }
+
+
+@dataclass
 class Chunk:
     """텍스트 청크
 
