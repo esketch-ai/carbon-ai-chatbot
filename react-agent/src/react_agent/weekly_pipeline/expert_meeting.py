@@ -7,7 +7,7 @@ content that cannot be resolved by rule-based classification.
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
 
 from langchain_anthropic import ChatAnthropic

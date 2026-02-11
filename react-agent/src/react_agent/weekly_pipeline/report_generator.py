@@ -7,7 +7,7 @@ from expert analysis results in markdown format.
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from react_agent.agents.expert_panel.config import EXPERT_REGISTRY, ExpertRole
 
@@ -150,7 +150,7 @@ class ReportGenerator:
         total_crawled: int = 0,
         total_analyzed: int = 0,
         new_chunks: int = 0,
-        new_experts: List[str] | None = None,
+        new_experts: Optional[List[str]] = None,
     ) -> WeeklyReport:
         """Generate a weekly report from analysis results.
 

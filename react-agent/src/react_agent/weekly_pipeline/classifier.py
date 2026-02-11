@@ -178,7 +178,7 @@ class RuleBasedClassifier:
 
         # Multi-expert relevance check
         relevant_expert_count = sum(
-            1 for role, keywords in matched_keywords.items()
+            1 for keywords in matched_keywords.values()
             if len(keywords) > 0
         )
         if relevant_expert_count >= self.MULTI_EXPERT_THRESHOLD:

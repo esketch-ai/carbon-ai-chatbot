@@ -1,1 +1,1 @@
-"""Tests for weekly pipeline module."""
+"""Weekly pipeline tests."""
