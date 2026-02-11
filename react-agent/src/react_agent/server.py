@@ -1539,7 +1539,7 @@ async def get_pipeline_status():
 
 
 @app.post("/admin/vectordb/rebuild")
-async def rebuild_vectordb(request: Request):
+async def rebuild_vectordb():
     """Rebuild the vector database from knowledge base documents.
 
     This endpoint triggers a full rebuild of the ChromaDB vector store:
@@ -1559,7 +1559,15 @@ async def rebuild_vectordb(request: Request):
         rag_tool._rebuild_vectorstore()
 
         # Get stats after rebuild
-        stats = rag_tool.get_stats()
+        doc_count = 0
+        if rag_tool.vectorstore is not None:
+            doc_count = rag_tool.vectorstore._collection.count()
+
+        stats = {
+            "document_count": doc_count,
+            "db_path": str(rag_tool.chroma_db_path),
+            "kb_path": str(rag_tool.knowledge_base_path)
+        }
 
         logger.info(f"[VectorDB] 재구축 완료: {stats}")
 
