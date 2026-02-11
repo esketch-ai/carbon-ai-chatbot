@@ -308,25 +308,15 @@ class WeeklyPipeline:
         Returns:
             Number of documents saved.
         """
-        import logging
-        logger = logging.getLogger(__name__)
-
-        logger.info(f"[Save] Starting save stage: {len(preprocessed)} preprocessed, {len(classified)} classified, {len(analyzed)} analyzed")
-        logger.info(f"[Save] Knowledge base path: {self._knowledge_saver.base_path}")
-
         try:
             saved_count = self._knowledge_saver.save_batch(
                 contents=preprocessed,
                 classifications=classified,
                 analyses=analyzed,
             )
-            logger.info(f"[Save] Saved {saved_count} documents to knowledge base")
             return saved_count
 
         except Exception as e:
-            import traceback
-            logger.error(f"[Save] Exception: {str(e)}")
-            logger.error(f"[Save] Traceback: {traceback.format_exc()}")
             self._errors.append(f"Save stage error: {str(e)}")
             return 0
 

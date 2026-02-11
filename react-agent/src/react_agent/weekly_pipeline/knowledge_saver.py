@@ -99,10 +99,7 @@ class KnowledgeSaver:
             base_path: Base path for the knowledge base. If None, uses default.
         """
         self.base_path = base_path or get_knowledge_base_path()
-        logger.info(f"[KnowledgeSaver] Initialized with base_path: {self.base_path}")
-        logger.info(f"[KnowledgeSaver] Base path exists: {self.base_path.exists()}")
         self._ensure_directories()
-        logger.info(f"[KnowledgeSaver] After _ensure_directories, base path exists: {self.base_path.exists()}")
         self._saved_hashes: set = set()
 
     def _ensure_directories(self):
@@ -175,7 +172,6 @@ class KnowledgeSaver:
             document = self._build_document(content, classification, analysis)
 
             # Write to file
-            logger.info(f"[KnowledgeSaver] Writing to: {filepath}")
             filepath.write_text(document, encoding="utf-8")
             self._saved_hashes.add(content_hash)
 
@@ -183,9 +179,7 @@ class KnowledgeSaver:
             return str(filepath)
 
         except Exception as e:
-            import traceback
             logger.error(f"Failed to save content '{content.clean_title}': {e}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
 
     def _build_document(
@@ -280,27 +274,16 @@ class KnowledgeSaver:
         Returns:
             Number of successfully saved documents
         """
-        logger.info(f"[save_batch] Starting batch save: {len(contents)} contents, {len(classifications)} classifications, {len(analyses) if analyses else 0} analyses")
-
         saved_count = 0
-        failed_count = 0
 
         for i, (content, classification) in enumerate(zip(contents, classifications)):
             analysis = analyses[i] if analyses and i < len(analyses) else None
 
-            try:
-                result = self.save_content(content, classification, analysis)
-                if result:
-                    saved_count += 1
-                else:
-                    failed_count += 1
-                    if i < 3:  # Log first few failures
-                        logger.warning(f"[save_batch] Item {i} returned None: {content.clean_title[:50]}")
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"[save_batch] Exception for item {i}: {e}")
+            result = self.save_content(content, classification, analysis)
+            if result:
+                saved_count += 1
 
-        logger.info(f"Saved {saved_count}/{len(contents)} documents to knowledge base (failed: {failed_count})")
+        logger.info(f"Saved {saved_count}/{len(contents)} documents to knowledge base")
         return saved_count
 
     def get_statistics(self) -> Dict[str, Any]:

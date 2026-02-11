@@ -1463,8 +1463,6 @@ async def run_weekly_pipeline(request: Request):
     4. Analyze content
     5. Generate report and update knowledge base
     """
-    import os
-    from pathlib import Path
     from react_agent.weekly_pipeline.pipeline import WeeklyPipeline
 
     try:
@@ -1477,19 +1475,7 @@ async def run_weekly_pipeline(request: Request):
 
         result = await pipeline.run()
 
-        logger.info(f"[Pipeline] 완료 - 크롤링: {result.crawled_count}, 분석: {result.analyzed_count}")
-
-        # Get debug info about knowledge base
-        kb_path = Path(os.getenv("KNOWLEDGE_BASE_PATH", "/app/knowledge_base"))
-        kb_debug = {
-            "env_var": os.getenv("KNOWLEDGE_BASE_PATH"),
-            "resolved_path": str(kb_path),
-            "exists": kb_path.exists(),
-            "is_dir": kb_path.is_dir() if kb_path.exists() else False,
-        }
-        if kb_path.exists():
-            kb_debug["contents"] = [str(p) for p in kb_path.iterdir()][:10]
-            kb_debug["md_files_count"] = len(list(kb_path.rglob("*.md")))
+        logger.info(f"[Pipeline] 완료 - 크롤링: {result.crawled_count}, 분석: {result.analyzed_count}, 저장: {result.chunks_created}")
 
         return {
             "status": "success",
@@ -1501,8 +1487,7 @@ async def run_weekly_pipeline(request: Request):
             "chunks_created": result.chunks_created,
             "new_experts": result.new_experts,
             "report_path": result.report_path,
-            "errors": result.errors,
-            "knowledge_base_debug": kb_debug
+            "errors": result.errors
         }
 
     except Exception as e:
