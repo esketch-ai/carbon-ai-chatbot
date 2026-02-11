@@ -1451,6 +1451,91 @@ async def get_thread_history(thread_id: str, request: Request):
         return []
 
 
+# ============= Weekly Pipeline Endpoints =============
+@app.post("/admin/pipeline/run")
+async def run_weekly_pipeline(request: Request):
+    """Run the weekly crawling and analysis pipeline manually.
+
+    This endpoint triggers a full pipeline run:
+    1. Crawl configured sources
+    2. Preprocess content
+    3. Classify and route to experts
+    4. Analyze content
+    5. Generate report and update knowledge base
+    """
+    from react_agent.weekly_pipeline.pipeline import WeeklyPipeline
+
+    try:
+        logger.info("[Pipeline] 수동 실행 시작")
+
+        pipeline = WeeklyPipeline(
+            days_back=7,
+            enable_llm_meeting=True
+        )
+
+        result = await pipeline.run()
+
+        logger.info(f"[Pipeline] 완료 - 크롤링: {result.crawled_count}, 분석: {result.analyzed_count}")
+
+        return {
+            "status": "success",
+            "start_time": result.start_time.isoformat(),
+            "end_time": result.end_time.isoformat(),
+            "crawled_count": result.crawled_count,
+            "preprocessed_count": result.preprocessed_count,
+            "analyzed_count": result.analyzed_count,
+            "chunks_created": result.chunks_created,
+            "new_experts": result.new_experts,
+            "report_path": result.report_path,
+            "errors": result.errors
+        }
+
+    except Exception as e:
+        logger.error(f"[Pipeline] 실행 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {str(e)}")
+
+
+@app.get("/admin/pipeline/status")
+async def get_pipeline_status():
+    """Get the status of the weekly pipeline and knowledge base."""
+    from pathlib import Path
+
+    kb_path = Path(__file__).parent.parent / "knowledge_base"
+    chroma_path = Path(__file__).parent.parent / "chroma_db"
+    reports_path = Path(__file__).parent.parent / "data" / "weekly_reports"
+
+    # Count documents in knowledge base
+    doc_count = 0
+    for ext in ['.txt', '.md', '.pdf', '.docx']:
+        doc_count += len(list(kb_path.rglob(f"*{ext}"))) if kb_path.exists() else 0
+
+    # Check chroma db
+    chroma_exists = chroma_path.exists() and any(chroma_path.iterdir()) if chroma_path.exists() else False
+
+    # Get latest report
+    latest_report = None
+    if reports_path.exists():
+        reports = sorted(reports_path.glob("*.md"), reverse=True)
+        if reports:
+            latest_report = reports[0].name
+
+    return {
+        "knowledge_base": {
+            "path": str(kb_path),
+            "document_count": doc_count,
+            "exists": kb_path.exists()
+        },
+        "vector_db": {
+            "path": str(chroma_path),
+            "exists": chroma_exists
+        },
+        "reports": {
+            "path": str(reports_path),
+            "latest_report": latest_report
+        }
+    }
+
+
 # Run server
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))  # Hugging Face Spaces default
