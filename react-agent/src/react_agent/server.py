@@ -20,7 +20,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST, REGISTRY
 
 from react_agent.graph_multi import graph   # 멀티 에이전트 그래프 임포트
 from react_agent.configuration import Configuration  # 기존 설정 클래스
@@ -39,13 +39,32 @@ setup_logging()
 logger = get_logger(__name__)
 
 # ============= Prometheus Metrics =============
+def _get_or_create_metric(metric_class, name, description, labelnames=None, **kwargs):
+    """Get existing metric or create new one to avoid duplicate registration."""
+    try:
+        # Try to get existing metric from registry
+        for collector in REGISTRY._names_to_collectors.values():
+            if hasattr(collector, '_name') and collector._name == name:
+                return collector
+        # Create new metric if not found
+        if labelnames:
+            return metric_class(name, description, labelnames, **kwargs)
+        return metric_class(name, description, **kwargs)
+    except Exception:
+        # Fallback: create without registry check
+        if labelnames:
+            return metric_class(name, description, labelnames, **kwargs)
+        return metric_class(name, description, **kwargs)
+
 # Request metrics
-REQUEST_COUNT = Counter(
+REQUEST_COUNT = _get_or_create_metric(
+    Counter,
     'carbonai_requests_total',
     'Total number of requests',
     ['endpoint', 'method', 'status']
 )
-REQUEST_LATENCY = Histogram(
+REQUEST_LATENCY = _get_or_create_metric(
+    Histogram,
     'carbonai_request_latency_seconds',
     'Request latency in seconds',
     ['endpoint'],
@@ -53,25 +72,29 @@ REQUEST_LATENCY = Histogram(
 )
 
 # Agent metrics
-AGENT_USAGE = Counter(
+AGENT_USAGE = _get_or_create_metric(
+    Counter,
     'carbonai_agent_usage_total',
     'Agent usage count by type',
     ['agent_type', 'category']
 )
 
 # Error metrics
-ERROR_COUNT = Counter(
+ERROR_COUNT = _get_or_create_metric(
+    Counter,
     'carbonai_errors_total',
     'Total number of errors',
     ['error_type', 'endpoint']
 )
 
 # System metrics
-ACTIVE_THREADS = Gauge(
+ACTIVE_THREADS = _get_or_create_metric(
+    Gauge,
     'carbonai_active_threads',
     'Number of active conversation threads'
 )
-ACTIVE_REQUESTS = Gauge(
+ACTIVE_REQUESTS = _get_or_create_metric(
+    Gauge,
     'carbonai_active_requests',
     'Number of currently active requests'
 )
