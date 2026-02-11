@@ -13,6 +13,7 @@ from .expert_generator import (
 )
 from .expert_meeting import ExpertMeeting, MeetingResult, NewExpertProposal
 from .preprocessor import PreprocessedContent, Preprocessor
+from .report_generator import ExpertSection, ReportGenerator, WeeklyReport
 from .sources import (
     DOMESTIC_SOURCES,
     INTERNATIONAL_SOURCES,
@@ -33,15 +34,18 @@ __all__ = [
     "ExpertAnalyzer",
     "ExpertGenerator",
     "ExpertMeeting",
+    "ExpertSection",
     "INTERNATIONAL_SOURCES",
     "MEDIA_SOURCES",
     "MeetingResult",
     "NewExpertProposal",
     "PreprocessedContent",
     "Preprocessor",
+    "ReportGenerator",
     "RSSCrawler",
     "RuleBasedClassifier",
     "SourceConfig",
+    "WeeklyReport",
     "clear_dynamic_experts",
     "get_default_registry",
     "get_dynamic_expert",
