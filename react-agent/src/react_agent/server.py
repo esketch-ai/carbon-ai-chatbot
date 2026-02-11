@@ -426,7 +426,7 @@ app.state.limiter = limiter
 # CORS middleware - 환경변수 기반 origin 제한
 _origins_env = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:3000,https://carbon-ai-chatbot.vercel.app"
+    "http://localhost:3000,https://carbon-ai-chatbot.vercel.app,https://esketch-carbon-ai-chatbot-ui.hf.space"
 )
 
 # 빈 문자열 및 와일드카드 필터링

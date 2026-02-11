@@ -26,11 +26,9 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# 환경 변수 설정 (빌드 시)
-ARG NEXT_PUBLIC_API_URL
-ARG NEXT_PUBLIC_ASSISTANT_ID=agent
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_ASSISTANT_ID=$NEXT_PUBLIC_ASSISTANT_ID
+# 환경 변수 설정 (빌드 시) - HuggingFace Spaces backend
+ENV NEXT_PUBLIC_API_URL="https://esketch-carbon-ai-chatbot.hf.space"
+ENV NEXT_PUBLIC_ASSISTANT_ID="agent"
 
 # Next.js 빌드
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -59,9 +57,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
 
-EXPOSE 3000
+# HuggingFace Spaces uses port 7860
+EXPOSE 7860
 
-ENV PORT=3000
+ENV PORT=7860
 ENV HOSTNAME="0.0.0.0"
+
+# Backend API URL (HuggingFace Spaces)
+ENV NEXT_PUBLIC_API_URL="https://esketch-carbon-ai-chatbot.hf.space"
+ENV NEXT_PUBLIC_ASSISTANT_ID="agent"
 
 CMD ["node", "server.js"]
