@@ -12,6 +12,7 @@ from .expert_generator import (
     register_dynamic_expert,
 )
 from .expert_meeting import ExpertMeeting, MeetingResult, NewExpertProposal
+from .knowledge_saver import KnowledgeSaver
 from .pipeline import PipelineResult, WeeklyPipeline
 from .preprocessor import PreprocessedContent, Preprocessor
 from .report_generator import ExpertSection, ReportGenerator, WeeklyReport
@@ -38,6 +39,7 @@ __all__ = [
     "ExpertMeeting",
     "ExpertSection",
     "INTERNATIONAL_SOURCES",
+    "KnowledgeSaver",
     "MEDIA_SOURCES",
     "MeetingResult",
     "NewExpertProposal",
