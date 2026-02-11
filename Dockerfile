@@ -30,6 +30,7 @@ RUN pip install --no-cache-dir -e .
 # 환경 변수 설정
 ENV PORT=7860
 ENV KNOWLEDGE_BASE_PATH=/app/knowledge_base
+ENV CHROMA_DB_PATH=/app/chroma_db
 EXPOSE 7860
 
 # 헬스체크

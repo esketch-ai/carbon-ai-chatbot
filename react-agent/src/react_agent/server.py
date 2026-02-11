@@ -1501,9 +1501,9 @@ async def get_pipeline_status():
     import os
     from pathlib import Path
 
-    # Use environment variable if set, otherwise fallback to relative path
+    # Use environment variables if set, otherwise fallback to relative paths
     kb_path = Path(os.getenv("KNOWLEDGE_BASE_PATH", str(Path(__file__).parent.parent / "knowledge_base")))
-    chroma_path = Path(__file__).parent.parent / "chroma_db"
+    chroma_path = Path(os.getenv("CHROMA_DB_PATH", str(Path(__file__).parent.parent / "chroma_db")))
     reports_path = Path(__file__).parent.parent / "data" / "weekly_reports"
 
     # Count documents in knowledge base
