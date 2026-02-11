@@ -1548,15 +1548,24 @@ async def rebuild_vectordb():
     3. Generate embeddings
     4. Store in ChromaDB
     """
+    import shutil
+
     try:
-        logger.info("[VectorDB] 벡터 DB 재구축 시작")
+        logger.info("[VectorDB] 벡터 DB 구축 시작")
 
         rag_tool = get_rag_tool()
         if not rag_tool.available:
             raise HTTPException(status_code=500, detail="RAG 도구를 사용할 수 없습니다")
 
-        # Force rebuild
-        rag_tool._rebuild_vectorstore()
+        # Delete existing DB if present to force complete rebuild
+        if rag_tool.chroma_db_path.exists():
+            logger.info(f"[VectorDB] 기존 DB 삭제: {rag_tool.chroma_db_path}")
+            rag_tool._vectorstore = None
+            shutil.rmtree(rag_tool.chroma_db_path, ignore_errors=True)
+
+        # Build new vectorstore from documents
+        logger.info("[VectorDB] 문서 로딩 및 인덱싱 시작...")
+        built = rag_tool._build_vectorstore_if_needed()
 
         # Get stats after rebuild
         doc_count = 0
@@ -1566,19 +1575,20 @@ async def rebuild_vectordb():
         stats = {
             "document_count": doc_count,
             "db_path": str(rag_tool.chroma_db_path),
-            "kb_path": str(rag_tool.knowledge_base_path)
+            "kb_path": str(rag_tool.knowledge_base_path),
+            "built": built
         }
 
-        logger.info(f"[VectorDB] 재구축 완료: {stats}")
+        logger.info(f"[VectorDB] 구축 완료: {stats}")
 
         return {
             "status": "success",
-            "message": "벡터 DB 재구축 완료",
+            "message": f"벡터 DB 구축 완료 - {doc_count}개 청크 인덱싱됨",
             "stats": stats
         }
 
     except Exception as e:
-        logger.error(f"[VectorDB] 재구축 실패: {e}", exc_info=True)
+        logger.error(f"[VectorDB] 구축 실패: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"VectorDB rebuild failed: {str(e)}")
 
 
