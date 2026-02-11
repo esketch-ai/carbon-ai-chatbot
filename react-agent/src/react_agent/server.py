@@ -39,27 +39,46 @@ setup_logging()
 logger = get_logger(__name__)
 
 # ============= Prometheus Metrics =============
+# Use module-level dict to store metrics and avoid duplicate registration
+_METRICS: Dict[str, Any] = {}
+
 def _get_or_create_metric(metric_class, name, description, labelnames=None, **kwargs):
     """Get existing metric or create new one to avoid duplicate registration."""
+    # Check module-level cache first
+    if name in _METRICS:
+        return _METRICS[name]
+
+    # Check if metric exists in registry
+    if name in REGISTRY._names_to_collectors:
+        _METRICS[name] = REGISTRY._names_to_collectors[name]
+        return _METRICS[name]
+
+    # Try to create new metric
     try:
-        # Try to get existing metric from registry
-        for collector in REGISTRY._names_to_collectors.values():
-            if hasattr(collector, '_name') and collector._name == name:
-                return collector
-        # Create new metric if not found
         if labelnames:
-            return metric_class(name, description, labelnames, **kwargs)
-        return metric_class(name, description, **kwargs)
-    except Exception:
-        # Fallback: create without registry check
-        if labelnames:
-            return metric_class(name, description, labelnames, **kwargs)
-        return metric_class(name, description, **kwargs)
+            metric = metric_class(name, description, labelnames, **kwargs)
+        else:
+            metric = metric_class(name, description, **kwargs)
+        _METRICS[name] = metric
+        return metric
+    except ValueError as e:
+        if "Duplicated timeseries" in str(e):
+            # Metric was registered by another import, find and return it
+            for collector in REGISTRY._names_to_collectors.values():
+                if hasattr(collector, '_name') and collector._name == name:
+                    _METRICS[name] = collector
+                    return collector
+            # For Counter, the key might be the base name without _total
+            base_name = name.replace('_total', '') if name.endswith('_total') else name
+            if base_name in REGISTRY._names_to_collectors:
+                _METRICS[name] = REGISTRY._names_to_collectors[base_name]
+                return _METRICS[name]
+        raise
 
 # Request metrics
 REQUEST_COUNT = _get_or_create_metric(
     Counter,
-    'carbonai_requests_total',
+    'carbonai_requests',
     'Total number of requests',
     ['endpoint', 'method', 'status']
 )
@@ -74,7 +93,7 @@ REQUEST_LATENCY = _get_or_create_metric(
 # Agent metrics
 AGENT_USAGE = _get_or_create_metric(
     Counter,
-    'carbonai_agent_usage_total',
+    'carbonai_agent_usage',
     'Agent usage count by type',
     ['agent_type', 'category']
 )
@@ -82,7 +101,7 @@ AGENT_USAGE = _get_or_create_metric(
 # Error metrics
 ERROR_COUNT = _get_or_create_metric(
     Counter,
-    'carbonai_errors_total',
+    'carbonai_errors',
     'Total number of errors',
     ['error_type', 'endpoint']
 )
