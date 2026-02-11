@@ -17,6 +17,7 @@ from .expert_meeting import ExpertMeeting, MeetingResult
 from .preprocessor import PreprocessedContent, Preprocessor
 from .report_generator import ReportGenerator
 from .sources import get_default_registry
+from .knowledge_saver import KnowledgeSaver
 
 
 @dataclass
@@ -84,6 +85,7 @@ class WeeklyPipeline:
         self._expert_meeting: Optional[ExpertMeeting] = None
         self._analyzer: Optional[ExpertAnalyzer] = None
         self._report_generator = ReportGenerator()
+        self._knowledge_saver = KnowledgeSaver()
 
         # Pipeline state
         self._errors: List[str] = []
@@ -121,7 +123,10 @@ class WeeklyPipeline:
         # Stage 5: Analyze
         analyzed = await self._stage_analyze(preprocessed, classified)
 
-        # Stage 6: Report
+        # Stage 6: Save to Knowledge Base
+        self._chunks_created = self._stage_save(preprocessed, classified, analyzed)
+
+        # Stage 7: Report
         report_path = self._stage_report(analyzed, self._new_experts)
 
         end_time = datetime.now()
@@ -278,25 +283,49 @@ class WeeklyPipeline:
 
             # Run batch analysis
             results = await self._analyzer.analyze_batch(preprocessed, classified)
-
-            # Count successful analyses
-            successful = [r for r in results if not r.error]
-
-            # Update chunks created count (rough estimate: 1 chunk per analysis)
-            self._chunks_created = len(successful)
-
             return results
 
         except Exception as e:
             self._errors.append(f"Analyze stage error: {str(e)}")
             return []
 
+    def _stage_save(
+        self,
+        preprocessed: List[PreprocessedContent],
+        classified: List[ClassificationResult],
+        analyzed: List[AnalysisResult],
+    ) -> int:
+        """Stage 6: Save content to knowledge base.
+
+        Saves all crawled and analyzed content to the knowledge base
+        for vector DB indexing and RAG retrieval.
+
+        Args:
+            preprocessed: List of preprocessed content.
+            classified: List of classification results.
+            analyzed: List of analysis results.
+
+        Returns:
+            Number of documents saved.
+        """
+        try:
+            saved_count = self._knowledge_saver.save_batch(
+                contents=preprocessed,
+                classifications=classified,
+                analyses=analyzed,
+            )
+            return saved_count
+
+        except Exception as e:
+            self._errors.append(f"Save stage error: {str(e)}")
+            return 0
+
     def _stage_report(
         self,
         analyzed: List[AnalysisResult],
         new_experts: List[str],
     ) -> str:
-        """Stage 6: Generate weekly briefing report.
+        """Stage 7: Generate weekly briefing report.
 
         Args:
             analyzed: List of analysis results.
