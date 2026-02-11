@@ -1,4 +1,4 @@
-# Cloud Run용 Dockerfile
+# Cloud Run/HuggingFace Spaces용 Dockerfile
 FROM python:3.11-slim
 
 # 작업 디렉토리 설정
