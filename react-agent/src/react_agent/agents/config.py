@@ -14,6 +14,7 @@ class AgentRole(str, Enum):
     CARBON_EXPERT = "carbon_expert"
     REGULATION_EXPERT = "regulation_expert"
     SUPPORT_EXPERT = "support_expert"
+    EXPERT_PANEL = "expert_panel"  # 박사급 전문가단
 
 
 @dataclass
@@ -116,6 +117,21 @@ AGENT_REGISTRY = {
         ],
         min_complexity="simple",
         max_complexity="medium"
+    ),
+
+    # Expert Panel: 박사급 전문가단 (Sonnet - 고품질 전문 응답)
+    AgentRole.EXPERT_PANEL: AgentConfig(
+        role=AgentRole.EXPERT_PANEL,
+        name="Expert Panel (박사급 전문가단)",
+        description="국내외 온실가스 정책 박사급 전문가 자문",
+        model="claude-sonnet-4-20250514",
+        temperature=0.1,
+        tools=[
+            "search_knowledge_base",  # RAG 검색
+            "search"  # 웹 검색
+        ],
+        min_complexity="complex",
+        max_complexity="expert"
     )
 }
 

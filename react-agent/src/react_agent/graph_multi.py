@@ -25,6 +25,10 @@ from react_agent.tools import get_all_tools
 # 멀티 에이전트 노드 임포트
 from react_agent.agents import manager_agent, simple_agent, expert_agent
 
+# Expert Panel 노드 임포트
+from react_agent.agents.expert_panel.nodes import expert_panel_router, expert_panel_agent
+from react_agent.agents.expert_panel.router import should_use_expert_panel
+
 # 기존 graph.py의 함수들 재사용
 from react_agent.graph import smart_tool_prefetch, _safe_rag_search
 
@@ -48,7 +52,7 @@ def get_confidence_threshold() -> float:
 def route_with_confidence(
     assigned_agent: str,
     confidence: float,
-    threshold: float = None
+    threshold: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     신뢰도 기반 라우팅 결정 헬퍼 함수
@@ -186,10 +190,11 @@ def route_after_prefetch(state: State) -> Literal["manager_agent", "__end__"]:
     return "manager_agent"
 
 
-def route_after_manager(state: State) -> Literal["simple_agent", "expert_agent", "clarification_agent"]:
+def route_after_manager(state: State) -> Literal["simple_agent", "expert_agent", "expert_panel_router", "clarification_agent"]:
     """Manager 판단 후 라우팅
 
     신뢰도 기반 라우팅:
+    - Expert Panel: 복잡도가 complex이거나 고급 키워드 포함 시
     - 신뢰도 >= CONFIDENCE_THRESHOLD: Simple 또는 Expert 에이전트로 분기
     - 신뢰도 < CONFIDENCE_THRESHOLD: 명확화 요청 에이전트로 분기
     """
@@ -197,6 +202,21 @@ def route_after_manager(state: State) -> Literal["simple_agent", "expert_agent",
     assigned = decision.get("assigned_agent", "simple")
     confidence = decision.get("confidence", 0.5)
     complexity = decision.get("complexity", "unknown")
+
+    # 마지막 사용자 메시지 추출
+    last_user_message = ""
+    for msg in reversed(state.messages):
+        if hasattr(msg, 'content') and hasattr(msg, 'type') and msg.type == 'human':
+            last_user_message = msg.content if isinstance(msg.content, str) else str(msg.content)
+            break
+
+    # Expert Panel 사용 여부 확인
+    if should_use_expert_panel(complexity, confidence, last_user_message):
+        logger.info(
+            f"[ROUTE] Manager 결정: Expert Panel "
+            f"(복잡도: {complexity}, 신뢰도: {confidence:.2f})"
+        )
+        return "expert_panel_router"
 
     # 신뢰도가 낮으면 명확화 요청
     if confidence < CONFIDENCE_THRESHOLD:
@@ -237,7 +257,7 @@ def route_after_agent(state: State) -> Literal["tools", "__end__"]:
     return "__end__"
 
 
-def route_after_tools(state: State) -> Literal["simple_agent", "expert_agent"]:
+def route_after_tools(state: State) -> Literal["simple_agent", "expert_agent", "expert_panel_agent"]:
     """도구 실행 후 원래 에이전트로 복귀
 
     agent_used 필드로 어떤 에이전트가 호출했는지 확인
@@ -247,6 +267,9 @@ def route_after_tools(state: State) -> Literal["simple_agent", "expert_agent"]:
     if agent_used == "simple":
         logger.info("[ROUTE] 도구 실행 완료 → Simple Agent 복귀")
         return "simple_agent"
+    elif agent_used.startswith("expert_panel"):
+        logger.info(f"[ROUTE] 도구 실행 완료 → Expert Panel Agent ({agent_used}) 복귀")
+        return "expert_panel_agent"
     else:
         logger.info(f"[ROUTE] 도구 실행 완료 → Expert Agent ({agent_used}) 복귀")
         return "expert_agent"
@@ -262,6 +285,8 @@ builder.add_node("manager_agent", manager_agent)
 builder.add_node("clarification_agent", clarification_agent)  # 신뢰도 낮을 때 명확화 요청
 builder.add_node("simple_agent", simple_agent)
 builder.add_node("expert_agent", expert_agent)
+builder.add_node("expert_panel_router", expert_panel_router)  # Expert Panel 라우터
+builder.add_node("expert_panel_agent", expert_panel_agent)  # Expert Panel 에이전트
 builder.add_node("tools", call_tools)
 
 # 엣지 정의
@@ -278,19 +303,33 @@ builder.add_conditional_edges(
     }
 )
 
-# Manager → Simple, Expert, or Clarification (신뢰도 기반)
+# Manager → Simple, Expert, Expert Panel, or Clarification (신뢰도 기반)
 builder.add_conditional_edges(
     "manager_agent",
     route_after_manager,
     {
         "simple_agent": "simple_agent",
         "expert_agent": "expert_agent",
+        "expert_panel_router": "expert_panel_router",
         "clarification_agent": "clarification_agent"
     }
 )
 
 # Clarification Agent → End (명확화 요청 후 종료, 사용자 응답 대기)
 builder.add_edge("clarification_agent", "__end__")
+
+# Expert Panel Router → Expert Panel Agent (전문가 선정 후 에이전트로)
+builder.add_edge("expert_panel_router", "expert_panel_agent")
+
+# Expert Panel Agent → Tools or End
+builder.add_conditional_edges(
+    "expert_panel_agent",
+    route_after_agent,
+    {
+        "tools": "tools",
+        "__end__": "__end__"
+    }
+)
 
 # Simple Agent → Tools or End
 builder.add_conditional_edges(
@@ -318,7 +357,8 @@ builder.add_conditional_edges(
     route_after_tools,
     {
         "simple_agent": "simple_agent",
-        "expert_agent": "expert_agent"
+        "expert_agent": "expert_agent",
+        "expert_panel_agent": "expert_panel_agent"
     }
 )
 

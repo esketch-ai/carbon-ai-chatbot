@@ -89,6 +89,19 @@ class State(InputState):
     - confidence: 판단 신뢰도 (0.0-1.0)
     """
 
+    # 🎯 Expert Panel: 전문가 패널 결정
+    expert_panel_decision: dict = field(default_factory=dict)
+    """
+    Expert Panel 라우터의 전문가 선정 결과
+
+    포함 내용:
+    - primary_expert: ExpertRole - 주 전문가 역할
+    - primary_score: float - 매칭 점수 (0.0-1.0)
+    - additional_experts: List[ExpertRole] | None - 협업 전문가들
+    - needs_collaboration: bool - 협업 필요 여부
+    - query: str - 분석된 사용자 질문
+    """
+
     # 🎯 멀티 에이전트: 사용된 에이전트
     agent_used: str = field(default="")
     """
