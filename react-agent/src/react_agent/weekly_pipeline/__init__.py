@@ -1,5 +1,6 @@
 """Weekly pipeline module for policy/news analysis."""
 
+from .analyzer import ANALYSIS_PROMPT, AnalysisResult, ExpertAnalyzer
 from .classifier import ClassificationResult, RuleBasedClassifier
 from .crawler import BaseCrawler, CrawledContent, CrawlerRegistry, RSSCrawler
 from .expert_generator import (
@@ -21,12 +22,15 @@ from .sources import (
 )
 
 __all__ = [
+    "ANALYSIS_PROMPT",
+    "AnalysisResult",
     "BaseCrawler",
     "ClassificationResult",
     "CrawledContent",
     "CrawlerRegistry",
     "DOMESTIC_SOURCES",
     "DynamicExpertRole",
+    "ExpertAnalyzer",
     "ExpertGenerator",
     "ExpertMeeting",
     "INTERNATIONAL_SOURCES",
