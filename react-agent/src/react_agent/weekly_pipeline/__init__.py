@@ -12,8 +12,10 @@ from .expert_generator import (
     register_dynamic_expert,
 )
 from .expert_meeting import ExpertMeeting, MeetingResult, NewExpertProposal
+from .pipeline import PipelineResult, WeeklyPipeline
 from .preprocessor import PreprocessedContent, Preprocessor
 from .report_generator import ExpertSection, ReportGenerator, WeeklyReport
+from .scheduler import PipelineScheduler, SchedulerConfig
 from .sources import (
     DOMESTIC_SOURCES,
     INTERNATIONAL_SOURCES,
@@ -39,12 +41,16 @@ __all__ = [
     "MEDIA_SOURCES",
     "MeetingResult",
     "NewExpertProposal",
+    "PipelineResult",
+    "PipelineScheduler",
     "PreprocessedContent",
     "Preprocessor",
     "ReportGenerator",
     "RSSCrawler",
     "RuleBasedClassifier",
+    "SchedulerConfig",
     "SourceConfig",
+    "WeeklyPipeline",
     "WeeklyReport",
     "clear_dynamic_experts",
     "get_default_registry",
