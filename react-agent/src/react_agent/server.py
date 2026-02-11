@@ -1547,6 +1547,9 @@ async def rebuild_vectordb():
     2. Split into chunks
     3. Generate embeddings
     4. Store in ChromaDB
+
+    Note: HuggingFace Spaces uses ephemeral storage. Run /admin/pipeline/run
+    first to populate the knowledge base, then immediately rebuild the vector DB.
     """
     import shutil
 
@@ -1557,14 +1560,11 @@ async def rebuild_vectordb():
         if not rag_tool.available:
             raise HTTPException(status_code=500, detail="RAG 도구를 사용할 수 없습니다")
 
-        # Debug info
         kb_exists = rag_tool.knowledge_base_path.exists()
         db_exists = rag_tool.chroma_db_path.exists()
         doc_files = list(rag_tool.knowledge_base_path.rglob("*.md")) if kb_exists else []
 
-        logger.info(f"[VectorDB] KB 경로: {rag_tool.knowledge_base_path}, 존재: {kb_exists}")
-        logger.info(f"[VectorDB] DB 경로: {rag_tool.chroma_db_path}, 존재: {db_exists}")
-        logger.info(f"[VectorDB] 문서 파일 수: {len(doc_files)}")
+        logger.info(f"[VectorDB] KB: {rag_tool.knowledge_base_path} (exists={kb_exists}, files={len(doc_files)})")
 
         # Clear existing vectorstore reference
         rag_tool._vectorstore = None
@@ -1575,7 +1575,6 @@ async def rebuild_vectordb():
             shutil.rmtree(rag_tool.chroma_db_path, ignore_errors=True)
 
         # Build new vectorstore from documents
-        logger.info("[VectorDB] 문서 로딩 및 인덱싱 시작...")
         built = rag_tool._build_vectorstore_if_needed()
 
         # Get stats after rebuild
@@ -1585,14 +1584,11 @@ async def rebuild_vectordb():
 
         stats = {
             "document_count": doc_count,
-            "db_path": str(rag_tool.chroma_db_path),
-            "kb_path": str(rag_tool.knowledge_base_path),
-            "kb_exists": kb_exists,
-            "doc_files_found": len(doc_files),
+            "knowledge_base_files": len(doc_files),
             "built": built
         }
 
-        logger.info(f"[VectorDB] 구축 완료: {stats}")
+        logger.info(f"[VectorDB] 구축 완료: {doc_count}개 청크")
 
         return {
             "status": "success",
