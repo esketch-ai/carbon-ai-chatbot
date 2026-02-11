@@ -1,5 +1,6 @@
 """Weekly pipeline module for policy/news analysis."""
 
+from .classifier import ClassificationResult, RuleBasedClassifier
 from .crawler import BaseCrawler, CrawledContent, CrawlerRegistry, RSSCrawler
 from .preprocessor import PreprocessedContent, Preprocessor
 from .sources import (
@@ -12,6 +13,7 @@ from .sources import (
 
 __all__ = [
     "BaseCrawler",
+    "ClassificationResult",
     "CrawledContent",
     "CrawlerRegistry",
     "DOMESTIC_SOURCES",
@@ -20,6 +22,7 @@ __all__ = [
     "PreprocessedContent",
     "Preprocessor",
     "RSSCrawler",
+    "RuleBasedClassifier",
     "SourceConfig",
     "get_default_registry",
 ]
