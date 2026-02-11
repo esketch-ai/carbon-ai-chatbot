@@ -1498,9 +1498,11 @@ async def run_weekly_pipeline(request: Request):
 @app.get("/admin/pipeline/status")
 async def get_pipeline_status():
     """Get the status of the weekly pipeline and knowledge base."""
+    import os
     from pathlib import Path
 
-    kb_path = Path(__file__).parent.parent / "knowledge_base"
+    # Use environment variable if set, otherwise fallback to relative path
+    kb_path = Path(os.getenv("KNOWLEDGE_BASE_PATH", str(Path(__file__).parent.parent / "knowledge_base")))
     chroma_path = Path(__file__).parent.parent / "chroma_db"
     reports_path = Path(__file__).parent.parent / "data" / "weekly_reports"
 
