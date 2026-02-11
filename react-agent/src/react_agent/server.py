@@ -1538,6 +1538,42 @@ async def get_pipeline_status():
     }
 
 
+@app.post("/admin/vectordb/rebuild")
+async def rebuild_vectordb(request: Request):
+    """Rebuild the vector database from knowledge base documents.
+
+    This endpoint triggers a full rebuild of the ChromaDB vector store:
+    1. Load all documents from knowledge_base
+    2. Split into chunks
+    3. Generate embeddings
+    4. Store in ChromaDB
+    """
+    try:
+        logger.info("[VectorDB] 벡터 DB 재구축 시작")
+
+        rag_tool = get_rag_tool()
+        if not rag_tool.available:
+            raise HTTPException(status_code=500, detail="RAG 도구를 사용할 수 없습니다")
+
+        # Force rebuild
+        rag_tool._rebuild_vectorstore()
+
+        # Get stats after rebuild
+        stats = rag_tool.get_stats()
+
+        logger.info(f"[VectorDB] 재구축 완료: {stats}")
+
+        return {
+            "status": "success",
+            "message": "벡터 DB 재구축 완료",
+            "stats": stats
+        }
+
+    except Exception as e:
+        logger.error(f"[VectorDB] 재구축 실패: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"VectorDB rebuild failed: {str(e)}")
+
+
 # Run server
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))  # Hugging Face Spaces default
